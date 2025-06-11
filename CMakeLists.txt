@@ -21,10 +21,9 @@ qt_add_executable(PollocadGui
 qt_add_qml_module(PollocadGui
     URI pollocad
     VERSION 1.0
-    QML_FILES
-        Main.qml
-        SOURCES occtview.h occtview.cpp
-        RESOURCES notes.txt
+    QML_FILES Main.qml CodeEditor.qml
+    SOURCES occtview.h occtview.cpp
+    RESOURCES notes.txt
 )
 
 set_target_properties(PollocadGui PROPERTIES

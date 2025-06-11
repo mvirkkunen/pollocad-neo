@@ -1,19 +1,22 @@
 #include <QGuiApplication>
+#include <QTextDocument>
+#include <QQuickTextDocument>
 #include <QQuickWindow>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 
-#include "parser.h"
 #include "executor.h"
 
-/*class ApplicationData : public QObject
+class Util: public QObject
 {
     Q_OBJECT
 public:
-    Q_INVOKABLE void parse(QString code) const {
-        ::parse(code.toStdString());
+    Q_INVOKABLE void setupTextDocument(QQuickTextDocument *quickDoc) const {
+        auto doc = quickDoc->textDocument();
+
+
     }
-};*/
+};
 
 int main(int argc, char *argv[])
 {
@@ -25,6 +28,9 @@ int main(int argc, char *argv[])
 
     Executor executor;
     engine.rootContext()->setContextProperty("executor", &executor);
+
+    Util util;
+    engine.rootContext()->setContextProperty("util", &util);
 
     QObject::connect(
         &engine,
