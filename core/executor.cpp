@@ -19,68 +19,19 @@ Value eval(std::shared_ptr<QPromise<Result>> promise, const std::shared_ptr<Envi
 Value eval(std::shared_ptr<QPromise<Result>> promise, const ast::ExprList* exprs);
 }
 
-bool Value::truthy() const {
-    return std::visit(
-        [](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, double>) {
-                return v != 0.0;
-            } else if constexpr (std::is_same_v<T, Function>) {
-                return true;
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                return !v.empty();
-            } else {
-                return false;
-            }
-        },
-        v);
-}
-
-std::ostream& operator<<(std::ostream& os, const Value& val) {
-    std::visit(
-        [&os](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Undefined>) {
-                os << "undefined";
-            } else if constexpr (std::is_same_v<T, double>) {
-                os << v;
-            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
-                os << "{TaggedShapes}";
-            } else if constexpr (std::is_same_v<T, Function>) {
-                os << "{Function}";
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                os << "[";
-
-                bool first = true;
-                for (const auto& c : v) {
-                    if (first) {
-                        first = false;
-                    } else {
-                        os << ", ";
-                    }
-
-                    os << c;
-                }
-                os << "]";
-            } else if constexpr (std::is_same_v<T, RuntimeError>) {
-                os << "{RuntimeError: " << v.error << "}\n";
-            } else {
-                static_assert(false, "non-exhaustive visitor!");
-            }
-        },
-        val.v);
-
-    return os;
-}
-
 const TaggedShapes CallContext::children() const {
     const auto block = get<Function>("$children");
     if (!block) {
-        std::cerr << "no children block\n";
         return {};
     }
 
-    return *(*block)->call(sub()).as<TaggedShapes>();
+    const auto value = (**block)(empty());
+    const auto shapes = value.as<TaggedShapes>();
+    if (!shapes) {
+        return {};
+    }
+
+    return std::move(*shapes);
 }
 
 Value Environment::get(const std::string &name) const {
@@ -137,6 +88,11 @@ Value Executor::executeSync(QString code) {
 }
 
 void ExecutorThread::run() {
+    QElapsedTimer timer;
+    timer.start();
+
+    std::cerr << "Starting evaluation\n";
+
     auto root = parse(m_code);
     if (!root) {
         m_promise->addResult(Result("Parse error", {}));
@@ -159,28 +115,14 @@ void ExecutorThread::run() {
         shape = new Shape(comp);
     }
 
-    std::cerr << "Evaluation result: " << result << "\n";
+    auto elapsed = timer.elapsed();
+    std::cerr << "Evaluation took " << elapsed << "ms, result: " << result << "\n";
 
     m_promise->addResult(Result{"", shape});
 }
 
 namespace
 {
-
-class BlockFunction : public FunctionImpl {
-public:
-    BlockFunction(const std::shared_ptr<QPromise<Result>> &promise, const ast::ExprList *exprs, const std::shared_ptr<Environment> &env)
-        : m_promise(promise), m_exprs(exprs), m_env(env) { }
-
-    Value call(const CallContext &) override {
-        return eval(m_promise, m_env, m_exprs);
-    }
-
-private:
-    const std::shared_ptr<QPromise<Result>> m_promise;
-    const ast::ExprList *m_exprs;
-    const std::shared_ptr<Environment> m_env;
-};
 
 Value eval(std::shared_ptr<QPromise<Result>> promise, const std::shared_ptr<Environment> &env, const ast::Expr* expr) {
     if (promise->isCanceled()) {
@@ -228,8 +170,10 @@ Value eval(std::shared_ptr<QPromise<Result>> promise, const std::shared_ptr<Envi
                     named.insert({name, val});
                 }
 
-                return (*func)->call(CallContext{positional, named, promise});
+                return (**func)(CallContext{positional, named, promise});
             } else if constexpr (std::is_same_v<T, ast::NumberExpr>) {
+                return ex.value;
+            } else if constexpr (std::is_same_v<T, ast::StringExpr>) {
                 return ex.value;
             } else if constexpr (std::is_same_v<T, ast::VarExpr>) {
                 return env->get(ex.name);
@@ -244,7 +188,16 @@ Value eval(std::shared_ptr<QPromise<Result>> promise, const std::shared_ptr<Envi
                 new_env->vars.insert({ex.name, val});
                 return eval(promise, new_env, &ex.exprs);
             } else if constexpr (std::is_same_v<T, ast::BlockExpr>) {
-                return std::make_shared<BlockFunction>(promise, &ex.exprs, env);
+                return std::make_shared<FunctionImpl>([promise, env, exprs=&ex.exprs](const CallContext &c) {
+                    auto new_env = std::make_shared<Environment>();
+                    new_env->parent = env;
+
+                    for (const auto &[name, value] : c.named()) {
+                        new_env->vars.emplace(name, value);
+                    }
+
+                    return eval(promise, new_env, exprs);
+                });
             } else if constexpr (std::is_same_v<T, ast::ReturnExpr>) {
                 return eval(promise, env, &*ex.expr);
             } else {
@@ -271,7 +224,7 @@ Value eval(std::shared_ptr<QPromise<Result>> promise, const std::shared_ptr<Envi
         if (auto resultShapes = val.as<TaggedShapes>()) {
             std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
         } else /*if (std::holds_alternative<ast::ReturnExpr>(expr.inner()))*/ {
-            if (!shapes.empty()) {
+            if (!shapes.empty() && !val.undefined()) {
                 return RuntimeError{"Cannot return both shapes and a value"};
             }
 

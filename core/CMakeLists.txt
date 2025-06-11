@@ -7,6 +7,7 @@ qt_add_library(PollocadCore
     builtins_values.cpp
 
     builtins_shapes.cpp
+    value.h value.cpp
 )
 
 target_include_directories(PollocadCore

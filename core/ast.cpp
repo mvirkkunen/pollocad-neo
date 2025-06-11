@@ -45,6 +45,8 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                 os << space(indent) << "}" << "\n";
             } else if constexpr (std::is_same_v<T, NumberExpr>) {
                 os << space(indent) << "NumberExpr{" << ex.value << "}\n";
+            } else if constexpr (std::is_same_v<T, StringExpr>) {
+                os << space(indent) << "StringExpr{" << std::quoted(ex.value) << "}\n";
             } else if constexpr (std::is_same_v<T, VarExpr>) {
                 os << space(indent) << "VarExpr{" << ex.name << "}\n";
             } else if constexpr (std::is_same_v<T, AssignExpr>) {

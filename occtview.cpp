@@ -166,6 +166,8 @@ void OcctRenderer::setShape(Shape *shape) {
 }
 
 void OcctWrapper::init() {
+    // N.b. this needs a slightly modified OCCT which does not try to mess with GL stuff it's not supposed to touch
+
     m_driver = new OpenGl_GraphicDriver(nullptr, false);
     m_driver->ChangeOptions().buffersNoSwap = true;
     m_driver->ChangeOptions().buffersOpaqueAlpha = false;

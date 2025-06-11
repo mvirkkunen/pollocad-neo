@@ -3,8 +3,8 @@ import QtQuick.Controls
 import pollocad
 
 Window {
-    width: 1024
-    height: 786
+    width: 1280
+    height: 800
     visible: true
     title: qsTr("pollocad NEO")
 
@@ -28,11 +28,16 @@ Window {
 
         TextArea {
             id: code
-            SplitView.preferredWidth: 300
+            SplitView.preferredWidth: 600
             text: `
 move([10, 0, 0]) {
     box([50,10,10]);
     box([100, 100, 1]);
+}
+
+
+move([0, 0, 50]) {
+    repeat(25) move([25 * floor($i / 10), 25 * ($i % 10)]) cyl(r=10, h=50);
 }
 `.trim()
 
@@ -102,8 +107,6 @@ move([10, 0, 0]) {
             dot = num.length - dot;
             num = num.substring(0, num.length - dot) + num.substring(num.length - dot + 1);
         }
-
-        console.log("no dot num", num);
 
         num = parseInt(num) + delta;
 

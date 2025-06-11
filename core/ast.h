@@ -64,6 +64,12 @@ struct NumberExpr {
     bool operator==(const NumberExpr&) const = default;
 };
 
+struct StringExpr {
+    std::string value;
+
+    bool operator==(const StringExpr&) const = default;
+};
+
 struct BlockExpr {
     ExprList exprs;
 
@@ -78,7 +84,7 @@ struct ReturnExpr {
 
 struct Expr {
 public:
-    using Variant = std::variant<CallExpr, NumberExpr, VarExpr, AssignExpr, BlockExpr, ReturnExpr>;
+    using Variant = std::variant<CallExpr, NumberExpr, StringExpr, VarExpr, AssignExpr, BlockExpr, ReturnExpr>;
 
 private:
     Variant v;
@@ -89,6 +95,7 @@ public:
     Expr(AssignExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(VarExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(NumberExpr ex) : Expr(Variant{std::move(ex)}) { }
+    Expr(StringExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(BlockExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(ReturnExpr ex) : Expr(Variant{std::move(ex)}) { }
 

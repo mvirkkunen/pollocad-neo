@@ -5,68 +5,8 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QThreadPool>
-#include <TopoDS_Shape.hxx>
 
-struct Value;
-
-struct Undefined
-{
-    bool operator==(const Undefined &) const = default;
-};
-constexpr const auto undefined = Undefined{};
-
-struct TaggedShape {
-    TopoDS_Shape shape;
-    std::vector<std::string> tags;
-
-    TaggedShape() { }
-    TaggedShape(TopoDS_Shape shape) : shape(shape) { }
-    TaggedShape(TopoDS_Shape shape, std::vector<std::string> tags) : shape(shape), tags(tags) { }
-
-    bool operator==(const TaggedShape &) const = default;
-};
-using TaggedShapes = std::vector<TaggedShape>;
-
-class FunctionImpl;
-
-using Function = std::shared_ptr<FunctionImpl>;
-
-using List = std::vector<Value>;
-
-struct RuntimeError {
-    std::string error;
-
-    bool operator==(const RuntimeError &) const = default;
-};
-
-class Value {
-private:
-    using Variant = std::variant<Undefined, double, TaggedShapes, Function, List, RuntimeError>;
-    Variant v;
-
-public:
-    template <typename T>
-    constexpr Value(T v) : v(v) { }
-
-    template <typename T>
-    const T *as() const {
-        return std::get_if<T>(&v);
-    }
-
-    bool error() const {
-        return std::holds_alternative<RuntimeError>(v);
-    }
-
-    bool undefined() const {
-        return std::holds_alternative<Undefined>(v);
-    }
-
-    bool truthy() const;
-
-    friend std::ostream& operator<<(std::ostream& os, const Value& val);
-
-    bool operator==(const Value &) const = default;
-};
+#include "value.h"
 
 class Shape : public QObject {
     Q_OBJECT
@@ -109,6 +49,8 @@ public:
 
     const std::vector<Value> &positional() const { return m_positional; }
 
+    const std::unordered_map<std::string, Value> &named() const { return m_named; }
+
     size_t count() const { return m_positional.size(); }
 
     const Value &get(size_t index) const { return m_positional.at(index); }
@@ -116,7 +58,9 @@ public:
     const Value &get(std::string name) const { return m_named.at(name); }
 
     template <typename T>
-    const T *get(size_t index) const { return m_positional.at(index).as<T>(); }
+    const T *get(size_t index) const {
+        return index < m_positional.size() ? m_positional.at(index).as<T>() : nullptr;
+    }
 
     template <typename T>
     const T *get(std::string name) const {
@@ -128,8 +72,12 @@ public:
 
     const TaggedShapes children() const;
 
-    CallContext sub() const {
+    CallContext empty() const {
         return CallContext{{}, {}, m_promise};
+    }
+
+    CallContext with(const std::string &name, Value value) const {
+        return CallContext{{}, {{name, std::move(value)}}, m_promise};
     }
 
 private:
@@ -138,16 +86,12 @@ private:
     std::shared_ptr<QPromise<Result>> m_promise;
 };
 
-class FunctionImpl {
-public:
-    virtual Value call(const CallContext &c) = 0;
-};
-
 struct Environment {
     std::shared_ptr<Environment> parent;
     std::unordered_map<std::string, Value> vars;
 
     Value get(const std::string &name) const;
+    void add_function(const std::string &name, const FunctionImpl& func) { vars.emplace(name, std::make_shared<FunctionImpl>(func)); }
 };
 
 class Executor : public QObject
