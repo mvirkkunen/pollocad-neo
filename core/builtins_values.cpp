@@ -69,9 +69,50 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
     };
 }
 
-auto builtin_floor(const CallContext &c) {
+Value builtin_floor(const CallContext &c) {
     auto n = c.get<double>(0);
     return n ? Value{std::floor(*n)} : undefined;
+}
+
+Value builtin_index(const CallContext &c) {
+    auto alist = c.get<List>(0);
+    if (!alist) {
+        return RuntimeError{"Cannot index value of this type"};
+    }
+
+    auto aindex = c.get<double>(1);
+    if (aindex) {
+        size_t index = static_cast<size_t>(*aindex);
+        return (index < alist->size()) ? (*alist)[index] : undefined;
+    }
+
+    auto aname = c.get<std::string>(1);
+    if (aname) {
+        std::vector<Value> result;
+        for (const char ch : *aname) {
+            ssize_t index = -1;
+            switch (ch) {
+                case 'x': case 'r': index = 0; break;
+                case 'y': case 'g': index = 1; break;
+                case 'z': case 'b': index = 2; break;
+                case 'w': case 'a': index = 3; break;
+            }
+
+            if (index == -1) {
+                return RuntimeError{std::format("Invalid swizzle access: .{}", *aname)};
+            }
+
+            result.push_back(index < alist->size() ? (*alist)[index] : undefined);
+        }
+
+        if (result.size() == 1) {
+            return result[0];
+        }
+
+        return result;
+    }
+
+    return RuntimeError{"Invalid type for index"};
 }
 
 Value builtin_list(const CallContext &c) {
@@ -80,6 +121,7 @@ Value builtin_list(const CallContext &c) {
 
 
 void register_builtins_values(Environment &env) {
+    env.add_function("[]", builtin_index);
     env.add_function("if", builtin_if);
     env.add_function("-", builtin_minus);
     env.add_function("+", builtin_bin_op([](auto a, auto b) { return a + b; }));

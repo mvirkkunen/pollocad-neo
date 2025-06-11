@@ -64,6 +64,22 @@ private slots:
         QTest::newRow("if_false") //
             << "if 0 { 1 } else { 2 }"
             << Value{2.0};
+
+        QTest::newRow("list_index") //
+            << "[1, 2, 3][1]"
+            << Value{2.0};
+
+        QTest::newRow("list_index_nested") //
+            << "[1, [2, 3, 4], 5][1][2]"
+            << Value{4.0};
+
+        QTest::newRow("list_index_nested2") //
+            << "[1, [2, 3, [4, 5]], 6][1].z[1]"
+            << Value{5.0};
+
+        QTest::newRow("list_swizzle") //
+            << "[1, 2, 3].yzx"
+            << Value{List{2.0, 3.0, 1.0}};
     }
 };
 

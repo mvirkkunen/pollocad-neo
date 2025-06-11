@@ -32,7 +32,7 @@ std::vector<T> move_vec(T first, Rest... rest) {
 
 struct ident {
     static constexpr auto rule = ident_class;
-    static constexpr auto value = lexy::as_string<std::string, lexy::utf8_encoding>;
+    static constexpr auto value = lexy::as_string<std::string>;
 };
 
 struct stmt_list : lexy::transparent_production {
@@ -96,16 +96,39 @@ struct expr_string_literal : lexy::token_production {
 };
 
 struct expr_atom {
-    static constexpr auto rule = dsl::parenthesized(dsl::p<expr>)
-                                 | dsl::p<expr_block>
-                                 | dsl::p<expr_if_else>
-                                 | dsl::p<expr_var_or_call>
-                                 | dsl::p<expr_list>
-                                 | dsl::p<expr_number_literal>
-                                 | dsl::p<expr_string_literal>;
+    struct index_ops_ {
+        static constexpr auto rule = dsl::list(dsl::square_bracketed(dsl::p<expr>) | dsl::lit_c<'.'> >> dsl::p<ident>);
+        static constexpr auto value = lexy::as_list<std::vector<std::variant<ast::Expr, std::string>>>;
+    };
+
+    static constexpr auto rule = (dsl::parenthesized(dsl::p<expr>)
+                                  | dsl::p<expr_block>
+                                  | dsl::p<expr_if_else>
+                                  | dsl::p<expr_var_or_call>
+                                  | dsl::p<expr_list>
+                                  | dsl::p<expr_number_literal>
+                                  | dsl::p<expr_string_literal>) + dsl::opt(dsl::p<index_ops_>);
     static constexpr auto value = lexy::callback<ast::Expr>(
-        [](ast::ExprList exprs) { return ast::BlockExpr{std::move(exprs)}; },
-        [](ast::Expr expr) { return std::move(expr); }
+        [](ast::Expr expr, lexy::nullopt = {}) { return std::move(expr); },
+        [](ast::Expr expr, std::vector<std::variant<ast::Expr, std::string>> chain) {
+            // TODO: maybe this could be a fold
+            for (const auto &v : chain) {
+                std::visit<void>(
+                    [&expr](const auto &v) {
+                        using T = std::decay_t<decltype(v)>;
+                        if constexpr (std::is_same_v<T, ast::Expr>) {
+                            expr = ast::CallExpr{"[]", {expr, v}};
+                        } else if constexpr (std::is_same_v<T, std::string>) {
+                            expr = ast::CallExpr{"[]", {expr, ast::StringExpr{v}}};
+                        } else {
+                            static_assert(false, "non-exhaustive visitor!");
+                        }
+                    },
+                    v);
+            }
+
+            return expr;
+        }
     );
 };
 
