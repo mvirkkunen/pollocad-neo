@@ -1,51 +1,25 @@
 #pragma once
 
 #include <optional>
+#include <QAbstractTableModel>
 #include <QFuture>
 #include <QFutureWatcher>
 #include <QObject>
 #include <QThreadPool>
 
+#include "logmessage.h"
+#include "executorresult.h"
 #include "value.h"
 
-class Shape : public QObject {
-    Q_OBJECT
-
-public:
-    Shape() { }
-    Shape(const Shape &shape) : m_shape(shape.m_shape) { }
-    Shape(TopoDS_Shape shape) : m_shape(shape) { }
-
-    TopoDS_Shape &shape() { return m_shape; }
-
-private:
-    TopoDS_Shape m_shape;
-};
-
-class Result : public QObject {
-    Q_OBJECT
-
-public:
-    Result(const Result &other) : m_error(other.m_error), m_shape(other.m_shape ? new Shape(*other.m_shape) : nullptr) { }
-    Result(std::string error, Shape *shape) : m_error(error), m_shape(shape) {
-        if (m_shape) {
-            m_shape->setParent(this);
-        }
-    }
-
-public:
-    Q_INVOKABLE QString error() { return QString::fromStdString(m_error); }
-    Q_INVOKABLE Shape *shape() { return m_shape; }
-
-private:
-    std::string m_error;
-    Shape *m_shape;
+struct ExecutionContext {
+    QPromise<ExecutorResult> promise;
+    std::vector<LogMessage> messages;
 };
 
 class CallContext {
 public:
-    CallContext(std::vector<Value> positional, std::unordered_map<std::string, Value> named, const std::shared_ptr<QPromise<Result>> &promise) :
-        m_positional(positional), m_named(named), m_promise(promise) { }
+    CallContext(std::vector<Value> positional, std::unordered_map<std::string, Value> named, ExecutionContext &execContext, const Span &span) :
+        m_positional(positional), m_named(named), m_execContext(execContext), m_span(span) { }
 
     const std::vector<Value> &positional() const { return m_positional; }
 
@@ -68,29 +42,38 @@ public:
         return it != m_named.end() ? it->second.as<T>() : nullptr;
     }
 
-    bool canceled() const { return m_promise->isCanceled(); }
+    bool canceled() const { return m_execContext.promise.isCanceled(); }
+
+    void error(const std::string &msg) {
+        m_execContext.messages.push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
+    }
+
+    void warning(const std::string &msg) {
+        m_execContext.messages.push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
+    }
 
     const TaggedShapes children() const;
 
     CallContext empty() const {
-        return CallContext{{}, {}, m_promise};
+        return CallContext{{}, {}, m_execContext, m_span};
     }
 
     CallContext with(const std::string &name, Value value) const {
-        return CallContext{{}, {{name, std::move(value)}}, m_promise};
+        return CallContext{{}, {{name, std::move(value)}}, m_execContext, m_span};
     }
 
 private:
     std::vector<Value> m_positional;
     std::unordered_map<std::string, Value> m_named;
-    std::shared_ptr<QPromise<Result>> m_promise;
+    ExecutionContext& m_execContext;
+    const Span &m_span;
 };
 
 struct Environment {
-    std::shared_ptr<Environment> parent;
+    std::shared_ptr<Environment> parent = nullptr;
     std::unordered_map<std::string, Value> vars;
 
-    Value get(const std::string &name) const;
+    bool get(const std::string &name, Value &out) const;
     void add_function(const std::string &name, const FunctionImpl& func) { vars.emplace(name, std::make_shared<FunctionImpl>(func)); }
 };
 
@@ -98,18 +81,22 @@ class Executor : public QObject
 {
     Q_OBJECT
 
+    Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged);
+
     class Worker;
 
 public:
     Executor();
     Q_INVOKABLE void execute(QString code);
     Value executeSync(QString code);
+    bool isBusy() const;
 
 signals:
-    void result(Result *result);
+    void isBusyChanged();
+    void result(ExecutorResult *result);
+    void logMessage(LogMessage msg);
 
 private:
     QThreadPool m_threadPool;
-    QFutureWatcher<Result> m_futureWatcher;
-    std::optional<QFuture<Result>> m_inProgress;
+    QFutureWatcher<ExecutorResult> m_futureWatcher;
 };

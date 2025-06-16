@@ -24,6 +24,7 @@ qt_add_qml_module(PollocadGui
     QML_FILES Main.qml CodeEditor.qml
     SOURCES occtview.h occtview.cpp
     RESOURCES notes.txt
+    RESOURCES icon.png
 )
 
 set_target_properties(PollocadGui PROPERTIES

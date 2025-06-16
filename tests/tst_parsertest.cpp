@@ -39,8 +39,8 @@ private slots:
         ({ast::CallExpr{
             "+",
             {
-                ast::NumberExpr{1},
-                ast::NumberExpr{2},
+                ast::LiteralExpr{1},
+                ast::LiteralExpr{2},
             },
                                               }}));*/
     // clang-format on
@@ -51,7 +51,7 @@ private slots:
 
         auto actual = parse(code.toStdString());
 
-        QCOMPARE(actual, expected);
+        QCOMPARE(actual.result, expected);
     }
 
     void testParser_data() {
@@ -69,8 +69,8 @@ private slots:
             << ExprList{CallExpr{
                    "+",
                    {
-                       NumberExpr{1},
-                       NumberExpr{2},
+                       LiteralExpr{1},
+                       LiteralExpr{2},
                    },
                }};
 
@@ -80,22 +80,22 @@ private slots:
                    CallExpr{
                        "+",
                        {
-                           NumberExpr{1},
-                           NumberExpr{2},
+                           LiteralExpr{1},
+                           LiteralExpr{2},
                        },
                    },
                    CallExpr{
                        "+",
                        {
-                           NumberExpr{3},
-                           NumberExpr{4},
+                           LiteralExpr{3},
+                           LiteralExpr{4},
                        },
                    }};
 
         QTest::newRow("if_return") //
             << "if 1 { 2 } else { 3 }"
             << ExprList{CallExpr{
-                   "if", {NumberExpr{1}, BlockExpr{{NumberExpr(2)}}, BlockExpr{{NumberExpr(3)}}}}};
+                   "if", {LiteralExpr{1}, LambdaExpr{{LiteralExpr(2)}}, LambdaExpr{{LiteralExpr(3)}}}}};
 
         QTest::newRow("if_and") //
             << "if 1 { 2; } 3;"
@@ -103,11 +103,11 @@ private slots:
                    CallExpr{
                        "if",
                        {
-                           NumberExpr{1},
-                           BlockExpr{{NumberExpr(2)}},
+                           LiteralExpr{1},
+                           LambdaExpr{{LiteralExpr(2)}},
                        },
                    },
-                   NumberExpr{3},
+                   LiteralExpr{3},
                };
 
         QTest::newRow("if_else") //
@@ -118,12 +118,12 @@ private slots:
                        CallExpr{
                            "if",
                            {
-                               NumberExpr{1},
-                               BlockExpr{{NumberExpr(2)}},
-                               BlockExpr{{NumberExpr(3)}},
+                               LiteralExpr{1},
+                               LambdaExpr{{LiteralExpr(2)}},
+                               LambdaExpr{{LiteralExpr(3)}},
                            },
                        },
-                       NumberExpr{4},
+                       LiteralExpr{4},
                    }}};
 
         QTest::newRow("var") //
@@ -131,21 +131,19 @@ private slots:
             << ExprList{CallExpr{
                    "+",
                    {
-                       NumberExpr{1},
+                       LiteralExpr{1},
                        VarExpr{"pollo"},
                    }}};
 
         QTest::newRow("assign") //
             << "pollo = 2; perro + 1;"
-            << ExprList{AssignExpr{
-                   "pollo",
-                   Expr{NumberExpr{2}},
-                   ExprList{//
-                            CallExpr{"+", {VarExpr{"perro"}, NumberExpr{1}}}}}};
+            << ExprList{
+                   LetExpr{"pollo", Expr{LiteralExpr{2}}},
+                   CallExpr{"+", {VarExpr{"perro"}, LiteralExpr{1}}}};
 
         /*QTest::newRow("return") //
             << "pollo + 1"
-            << ExprList{{CallExpr{"+", {VarExpr{"pollo"}, NumberExpr{1}}}}};*/
+            << ExprList{{CallExpr{"+", {VarExpr{"pollo"}, LiteralExpr{1}}}}};*/
 
         QTest::newRow("call_func") //
             << "pollo();"
@@ -153,27 +151,27 @@ private slots:
 
         QTest::newRow("call_func_one") //
             << "pollo(1);"
-            << ExprList{CallExpr{"pollo", {NumberExpr{1}}}};
+            << ExprList{CallExpr{"pollo", {LiteralExpr{1}}}};
 
         QTest::newRow("call_func_two") //
             << "pollo(1, 2);"
-            << ExprList{CallExpr{"pollo", {NumberExpr{1}, {NumberExpr{2}}}}};
+            << ExprList{CallExpr{"pollo", {LiteralExpr{1}, {LiteralExpr{2}}}}};
 
         QTest::newRow("call_func_named") //
             << "pollo(a=1);"
-            << ExprList{CallExpr{"pollo", {}, {{"a", Expr{NumberExpr{1}}}}}};
+            << ExprList{CallExpr{"pollo", {}, {{"a", Expr{LiteralExpr{1}}}}}};
 
         QTest::newRow("call_func_mixed") //
             << "pollo(2, a=1);"
-            << ExprList{CallExpr{"pollo", {NumberExpr{2}}, {{"a", Expr{NumberExpr{1}}}}}};
+            << ExprList{CallExpr{"pollo", {LiteralExpr{2}}, {{"a", Expr{LiteralExpr{1}}}}}};
 
         QTest::newRow("call_func_block") //
             << "pollo() { 1; }"
-            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{BlockExpr{{NumberExpr{1}}}}}}}};
+            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{{LiteralExpr{1}}}}}}}};
 
         QTest::newRow("call_func_block_func") //
             << "pollo() { perro(); }"
-            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{BlockExpr{{CallExpr{"perro"}}}}}}}};
+            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{{CallExpr{"perro"}}}}}}}};
 
         QTest::newRow("call_func_nested_children_block") //
             << "pollo() perro() { 1; }"
@@ -181,19 +179,39 @@ private slots:
                    "pollo",
                    {},
                    {{"$children",
-                     Expr{BlockExpr{ExprList{CallExpr{
-                         "perro", {}, {{"$children", Expr{BlockExpr{{NumberExpr{1}}}}}}}}}}}}}};
+                     Expr{LambdaExpr{ExprList{CallExpr{
+                         "perro", {}, {{"$children", Expr{LambdaExpr{{LiteralExpr{1}}}}}}}}}}}}}};
 
         QTest::newRow("call_func_nested_children_no_block") //
             << "pollo() perro();"
             << ExprList{CallExpr{
                    "pollo",
                    {},
-                   {{"$children", Expr{BlockExpr{ExprList{CallExpr{"perro", {}, {}}}}}}}}};
+                   {{"$children", Expr{LambdaExpr{ExprList{CallExpr{"perro", {}, {}}}}}}}}};
 
         QTest::newRow("call_two_func") //
             << "pollo(); perro();"
             << ExprList{CallExpr{"pollo"}, CallExpr{"perro"}};
+
+        /*std::cerr << *parse(R"(
+move([10, 0, 0]) {
+    box([50,10,10]);
+    box([100, 100, 1]);
+}
+
+
+move([0, 0, 50]) {
+    repeat(25) move([25 * floor($i / 10), 25 * ($i % 10)]) cyl(r=10, h=50);
+}
+
+def thin_cyl(x, y, height) {
+    move([x, y]) cyl(r=1, h=height);
+}
+
+thin_cyl(100, 100, 100);
+thin_cyl(100, 110, 50);
+
+)") << "\n";*/
     }
 };
 

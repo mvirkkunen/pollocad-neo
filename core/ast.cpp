@@ -32,7 +32,18 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
     std::visit(
         [&os, indent](auto &&ex) {
             using T = std::decay_t<decltype(ex)>;
-            if constexpr (std::is_same_v<T, CallExpr>) {
+            if constexpr (std::is_same_v<T, LiteralExpr>) {
+                os << space(indent) << "LiteralExpr{" << *ex.value << "}\n";
+            } else if constexpr (std::is_same_v<T, VarExpr>) {
+                os << space(indent) << "VarExpr{" << ex.name << "}\n";
+            } else if constexpr (std::is_same_v<T, LetExpr>) {
+                os << space(indent) << "LetExpr{\n";
+                os << space(indent + 1) << ex.name << " = \n";
+                ex.value->dump(os, indent + 1);
+                //os << space(indent + 1) << "in:\n";
+                //ast::dump(os, ex.exprs, indent + 1);
+                os << space(indent) << "}\n";
+            } else if constexpr (std::is_same_v<T, CallExpr>) {
                 os << space(indent) << "CallExpr{\n";
                 os << space(indent + 1) << "" << ex.func << "\n";
                 for (const auto &ch : ex.positional) {
@@ -43,26 +54,23 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                     ch.second->dump(os, indent + 2);
                 }
                 os << space(indent) << "}" << "\n";
-            } else if constexpr (std::is_same_v<T, NumberExpr>) {
-                os << space(indent) << "NumberExpr{" << ex.value << "}\n";
-            } else if constexpr (std::is_same_v<T, StringExpr>) {
-                os << space(indent) << "StringExpr{" << std::quoted(ex.value) << "}\n";
-            } else if constexpr (std::is_same_v<T, VarExpr>) {
-                os << space(indent) << "VarExpr{" << ex.name << "}\n";
-            } else if constexpr (std::is_same_v<T, AssignExpr>) {
-                os << space(indent) << "AssignExpr{\n";
-                os << space(indent + 1) << ex.name << " = \n";
-                ex.value->dump(os, indent + 1);
-                os << space(indent + 1) << "in:\n";
-                ast::dump(os, ex.exprs, indent + 1);
+            } else if constexpr (std::is_same_v<T, LambdaExpr>) {
+                // TODO
+                os << space(indent) << "LambdaExpr(\n";
+
+                for (const auto &arg : ex.args) {
+                    os << space(indent + 1) << arg.name;
+
+                    if (arg.default_) {
+                        os << "=\n";
+                        (*arg.default_)->dump(os, indent + 2);
+                    }
+
+                    os << "\n";
+                }
+
+                ast::dump(os, ex.body, indent + 1);
                 os << space(indent) << "}\n";
-            } else if constexpr (std::is_same_v<T, BlockExpr>) {
-                os << space(indent) << "BlockExpr{\n";
-                ast::dump(os, ex.exprs, indent + 1);
-                os << space(indent) << "}\n";
-            } else if constexpr (std::is_same_v<T, ReturnExpr>) {
-                os << space(indent) << "return\n";
-                ex.expr->dump(os, indent + 1);
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }

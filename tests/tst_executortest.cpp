@@ -80,6 +80,14 @@ private slots:
         QTest::newRow("list_swizzle") //
             << "[1, 2, 3].yzx"
             << Value{List{2.0, 3.0, 1.0}};
+
+        QTest::newRow("def_none") //
+            << "def pollo() { 1 } pollo();"
+            << Value{1.0};
+
+        QTest::newRow("def_one") //
+            << "def pollo(a) { a + 1 } pollo(2);"
+            << Value{3.0};
     }
 };
 

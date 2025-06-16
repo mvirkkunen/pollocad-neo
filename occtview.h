@@ -15,9 +15,9 @@ public:
     ~OcctRenderer();
 
     void setParent(QQuickItem *parent) { m_parent = parent; }
-    void setShape(Shape *shape);
+    void setShape(TopoDS_Shape shape);
     void wheelEvent(int delta);
-    void mouseEvent(QPoint pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
+    void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
 
 public slots:
     void init();
@@ -37,19 +37,20 @@ class OcctView : public QQuickItem
 public:
     OcctView();
 
-    Q_INVOKABLE void setShape(Shape *shape);
+    Q_INVOKABLE void setResult(ExecutorResult *result);
 
 protected:
     void mousePressEvent(QMouseEvent *ev) override;
     void mouseReleaseEvent(QMouseEvent *ev) override;
     void mouseMoveEvent(QMouseEvent *ev) override;
+    void hoverMoveEvent(QHoverEvent *ev) override;
     void wheelEvent(QWheelEvent *ev) override;
 
 private slots:
     void sync();
     void cleanup();
     void handleWindowChanged(QQuickWindow *win);
-    void handleMouseEvent(QMouseEvent *ev);
+    void handleMouseEvent(QSinglePointEvent *ev);
 
 private:
     void releaseResources() override;

@@ -23,10 +23,11 @@
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
+#include <NCollection_DataMap.hxx>
 
 class OcctWrapper : public AIS_ViewController {
 public:
-    void setShape(Shape *shape);
+    void setShape(TopoDS_Shape shape);
     void init();
     void paint(int x, int y, int width, int height, int windowHeight);
     bool hasAnimation() { return m_viewCube->HasAnimation(); }
@@ -49,8 +50,9 @@ OcctView::OcctView()
     setAcceptedMouseButtons(Qt::AllButtons);
 }
 
-void OcctView::setShape(Shape *shape) {
-    window()->scheduleRenderJob(QRunnable::create([=, this] { if (m_renderer) { m_renderer->setShape(shape); } }), QQuickWindow::BeforeRenderingStage);
+void OcctView::setResult(ExecutorResult *result) {
+    TopoDS_Shape shape = result->shape();
+    window()->scheduleRenderJob(QRunnable::create([shape, this] { if (m_renderer) { m_renderer->setShape(shape); } }), QQuickWindow::BeforeRenderingStage);
     window()->update();
 }
 
@@ -69,6 +71,11 @@ void OcctView::mouseMoveEvent(QMouseEvent *ev)
     handleMouseEvent(ev);
 }
 
+void OcctView::hoverMoveEvent(QHoverEvent *ev)
+{
+    handleMouseEvent(ev);
+}
+
 void OcctView::wheelEvent(QWheelEvent *ev)
 {
     ev->accept();
@@ -77,10 +84,10 @@ void OcctView::wheelEvent(QWheelEvent *ev)
     window()->update();
 }
 
-void OcctView::handleMouseEvent(QMouseEvent *ev)
+void OcctView::handleMouseEvent(QSinglePointEvent *ev)
 {
     ev->accept();
-    auto pos = ev->pos();
+    auto pos = ev->position();
     auto buttons = ev->buttons();
     auto modifiers = ev->modifiers();
     window()->scheduleRenderJob(QRunnable::create([=, this] { if (m_renderer) { m_renderer->mouseEvent(pos, buttons, modifiers); } }), QQuickWindow::BeforeRenderingStage);
@@ -128,9 +135,9 @@ void OcctRenderer::init() {
     }
 }
 
-void OcctRenderer::mouseEvent(QPoint pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
-    Graphic3d_Vec2i posv{pos.x(), pos.y()};
+    Graphic3d_Vec2i posv{static_cast<int>(pos.x()), static_cast<int>(pos.y())};
 
     Aspect_VKeyMouse vkeymouse = Aspect_VKeyMouse_NONE;
     if (buttons & Qt::LeftButton) vkeymouse |= Aspect_VKeyMouse_LeftButton;
@@ -138,9 +145,9 @@ void OcctRenderer::mouseEvent(QPoint pos, Qt::MouseButtons buttons, Qt::Keyboard
     if (buttons & Qt::RightButton) vkeymouse |= Aspect_VKeyMouse_RightButton;
 
     Aspect_VKeyFlags vkeyflags = Aspect_VKeyFlags_NONE;
-    if (modifiers && Qt::ShiftModifier) vkeyflags |= Aspect_VKeyFlags_SHIFT;
-    if (modifiers && Qt::ControlModifier) vkeyflags |= Aspect_VKeyFlags_CTRL;
-    if (modifiers && Qt::AltModifier) vkeyflags |= Aspect_VKeyFlags_ALT;
+    if (modifiers & Qt::ShiftModifier) vkeyflags |= Aspect_VKeyFlags_SHIFT;
+    if (modifiers & Qt::ControlModifier) vkeyflags |= Aspect_VKeyFlags_CTRL;
+    if (modifiers & Qt::AltModifier) vkeyflags |= Aspect_VKeyFlags_ALT;
 
     m_wrapper->UpdateMousePosition(posv, vkeymouse, vkeyflags, false);
     m_wrapper->UpdateMouseButtons(posv, vkeymouse, vkeyflags, false);
@@ -152,8 +159,10 @@ void OcctRenderer::wheelEvent(int delta)
 }
 
 void OcctRenderer::paint() {
+    auto pos = m_parent->mapToScene({0, 0});
+
     m_parent->window()->beginExternalCommands();
-    m_wrapper->paint(m_parent->x(), m_parent->y(), m_parent->width(), m_parent->height(), m_parent->window()->height());
+    m_wrapper->paint(pos.x(), pos.y(), m_parent->width(), m_parent->height(), m_parent->window()->height());
     m_parent->window()->endExternalCommands();
 
     if (m_wrapper->hasAnimation()) {
@@ -161,7 +170,7 @@ void OcctRenderer::paint() {
     }
 }
 
-void OcctRenderer::setShape(Shape *shape) {
+void OcctRenderer::setShape(TopoDS_Shape shape) {
     m_wrapper->setShape(shape);
 }
 
@@ -227,6 +236,13 @@ void OcctWrapper::init() {
     m_viewCube->Attributes()->SetDatumAspect(aspect);
 
     m_interactiveContext->Display(m_viewCube, false);
+
+    SetLockOrbitZUp(true);
+    SetAllowPanning(true);
+
+    ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_LeftButton, AIS_MouseGesture::AIS_MouseGesture_RotateOrbit);
+    ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_MiddleButton, AIS_MouseGesture::AIS_MouseGesture_RotateView);
+    ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_RightButton, AIS_MouseGesture::AIS_MouseGesture_Pan);
 }
 
 void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
@@ -243,10 +259,8 @@ void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
     }
 
     glContext->Functions()->glDisable(GL_BLEND);
-    //glContext->Functions()->glBlendColor(0.0, 0.0, 0.0, 0.0);
-    //glContext->Functions()->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    m_fbo->BindBuffer(glContext); // ?????
+    m_fbo->BindBuffer(glContext);
     m_view->InvalidateImmediate();
     FlushViewEvents(m_interactiveContext, m_view, true);
     m_fbo->UnbindBuffer(glContext);
@@ -260,7 +274,11 @@ void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
     m_fbo->UnbindBuffer(glContext);
 }
 
-void OcctWrapper::setShape(Shape *shape) {
+void OcctWrapper::setShape(TopoDS_Shape shape) {
+    if (shape.IsNull()) {
+        return;
+    }
+
     bool center = false;
 
     if (m_shape) {
@@ -269,7 +287,7 @@ void OcctWrapper::setShape(Shape *shape) {
         center = true;
     }
 
-    m_shape = new AIS_Shape(shape->shape());
+    m_shape = new AIS_Shape(shape);
     m_shape->Attributes()->SetFaceBoundaryDraw(true);
 
     Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(Quantity_NOC_BLACK, Aspect_TOL_SOLID, 2.0);

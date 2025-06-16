@@ -3,18 +3,16 @@
 #include <iostream>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
-namespace ast {
+#include "logmessage.h"
+#include "value.h"
 
-/*struct CallExpr;
-struct NumberExpr;
-struct VarExpr;
-struct AssignExpr;
-struct BlockExpr;*/
+namespace ast {
 
 struct Expr;
 
@@ -36,68 +34,71 @@ private:
     std::shared_ptr<Expr> m_expr;
 };
 
-struct CallExpr {
-    std::string func;
-    std::vector<Expr> positional;
-    std::unordered_map<std::string, ExprPtr> named;
+struct LiteralExpr {
+    std::shared_ptr<Value> value = nullptr;
 
-    bool operator==(const CallExpr&) const = default;
-};
+    template <typename T>
+    LiteralExpr(const T& value) : value(std::make_shared<Value>(value)) { }
+    //LiteralExpr(const Value& value) : value(std::make_shared<Value>(value)) { }
+    //LiteralExpr(double value) : value(std::make_shared<Value>(value)) { }
 
-struct AssignExpr {
-    std::string name;
-    ExprPtr value;
-    ExprList exprs;
-
-    bool operator==(const AssignExpr&) const = default;
+    bool operator==(const LiteralExpr&) const = default;
 };
 
 struct VarExpr {
     std::string name;
+    Span span;
 
     bool operator==(const VarExpr&) const = default;
 };
 
-struct NumberExpr {
-    double value;
+struct LetExpr {
+    std::string name;
+    ExprPtr value;
+    Span span;
 
-    bool operator==(const NumberExpr&) const = default;
+    bool operator==(const LetExpr&) const = default;
 };
 
-struct StringExpr {
-    std::string value;
+struct CallExpr {
+    std::string func;
+    std::vector<Expr> positional;
+    std::unordered_map<std::string, ExprPtr> named;
+    Span span;
 
-    bool operator==(const StringExpr&) const = default;
+    bool operator==(const CallExpr&) const = default;
 };
 
-struct BlockExpr {
-    ExprList exprs;
+struct LambdaExpr {
+    struct Arg {
+        std::string name;
+        std::optional<ExprPtr> default_;
 
-    bool operator==(const BlockExpr&) const = default;
-};
+        bool operator==(const Arg&) const = default;
+    };
 
-struct ReturnExpr {
-    ExprPtr expr;
+    ExprList body;
+    std::vector<Arg> args;
+    std::string name;
+    Span span;
 
-    bool operator==(const ReturnExpr&) const = default;
+    bool operator==(const LambdaExpr&) const = default;
 };
 
 struct Expr {
 public:
-    using Variant = std::variant<CallExpr, NumberExpr, StringExpr, VarExpr, AssignExpr, BlockExpr, ReturnExpr>;
+    using Variant = std::variant<LiteralExpr, VarExpr, LetExpr, CallExpr, LambdaExpr>;
 
 private:
     Variant v;
 
 public:
     Expr(Variant v) : v(std::move(v)) { }
-    Expr(CallExpr ex) : Expr(Variant{std::move(ex)}) { }
-    Expr(AssignExpr ex) : Expr(Variant{std::move(ex)}) { }
+    Expr(LiteralExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(VarExpr ex) : Expr(Variant{std::move(ex)}) { }
-    Expr(NumberExpr ex) : Expr(Variant{std::move(ex)}) { }
-    Expr(StringExpr ex) : Expr(Variant{std::move(ex)}) { }
-    Expr(BlockExpr ex) : Expr(Variant{std::move(ex)}) { }
-    Expr(ReturnExpr ex) : Expr(Variant{std::move(ex)}) { }
+    Expr(LetExpr ex) : Expr(Variant{std::move(ex)}) { }
+    Expr(CallExpr ex) : Expr(Variant{std::move(ex)}) { }
+    Expr(LambdaExpr ex) : Expr(Variant{std::move(ex)}) { }
 
     const Variant &inner() const { return v; }
     void dump(std::ostream &os, int indent) const;

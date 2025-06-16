@@ -45,8 +45,12 @@ private:
     Variant v;
 
 public:
+    Value() : v(::undefined) { }
+
     template <typename T>
     constexpr Value(T v) : v(v) { }
+
+    constexpr Value(int v) : v(static_cast<double>(v)) { }
 
     template <typename T>
     const T *as() const {

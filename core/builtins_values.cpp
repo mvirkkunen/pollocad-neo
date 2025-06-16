@@ -18,6 +18,10 @@ Value builtin_if(const CallContext &c) {
         return undefined;
     }
 
+    if (c.count() == 2) {
+        return undefined;
+    }
+
     if (c.count() == 3) {
         auto else_ = c.get<Function>(2);
         if (!else_) {

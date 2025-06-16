@@ -18,9 +18,25 @@ public:
     }
 };
 
+#include <QDir>
+
+void dump(QDir dir) {
+    for (const auto &x : dir.entryInfoList()) {
+        qDebug() << x.filePath();
+
+        if (x.isDir()) {
+            dump(QDir(x.filePath()));
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+    app.setWindowIcon(QIcon(":/qt/qml/pollocad/icon.png"));
+    qDebug() << QIcon(":/qt/qml/icon.png").isNull();
+
+    dump(QDir(":"));
 
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 

@@ -1,41 +1,116 @@
 #include "executor.h"
 
+#include <BRepBndLib.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 
-Value builtin_box(const CallContext &c) {
-    double size[3] = { 1.0, 1.0, 1.0 };
+namespace
+{
 
-    if (c.count() > 0) {
-        if (auto l = c.get<List>(0)) {
-            for (int i = 0; i < l->size() && i < 3; i++) {
-                if (auto n = (*l)[i].as<double>()) {
-                    size[i] = *n;
-                }
+TopoDS_Compound toCompound(const TaggedShapes& shapes) {
+    TopoDS_Builder builder;
+    TopoDS_Compound comp;
+    builder.MakeCompound(comp);
+
+    for (const auto &sh : shapes) {
+        builder.Add(comp, sh.shape);
+    }
+
+    return comp;
+}
+
+Bnd_Box getBoundingBox(const TaggedShapes& shapes) {
+    Bnd_Box bbox;
+    BRepBndLib::Add(toCompound(shapes), bbox);
+    return bbox;
+}
+
+gp_Vec parseVec(const CallContext &c, double default_) {
+    gp_Vec vec{default_, default_, default_};
+
+    if (auto l = c.get<List>(0)) {
+        for (int i = 0; i < l->size() && i < 3; i++) {
+            if (auto n = (*l)[i].as<double>()) {
+                vec.SetCoord(i + 1, *n);
             }
         }
     }
 
-    if (size[0] == 0.0 || size[1] == 0.0 || size[2] == 0.0) {
-        return undefined;
+    if (auto n = c.get<double>("x")) {
+        vec.SetX(*n);
     }
 
-    return TaggedShapes{BRepPrimAPI_MakeBox{size[0], size[1], size[2]}.Shape()};
+    if (auto n = c.get<double>("y")) {
+        vec.SetY(*n);
+    }
+
+    if (auto n = c.get<double>("z")) {
+        vec.SetZ(*n);
+    }
+
+    return vec;
+}
+
+Value addShapeChildren(const CallContext &c, TaggedShapes shape) {
+    auto childrenp = c.get<Function>("$children");
+    if (childrenp) {
+        auto children = (**childrenp)(c.with("$parent", shape));
+        if (children.error()) {
+            return children;
+        }
+
+        if (auto childShapes = children.as<TaggedShapes>()) {
+            std::move(childShapes->begin(), childShapes->end(), std::back_inserter(shape));
+        } else {
+            std::cerr << "Invalid children for shape";
+        }
+    }
+
+    return shape;
+}
+
+}
+
+
+Value builtin_box(const CallContext &c) {
+    auto size = parseVec(c, 1.0);
+    return addShapeChildren(c, TaggedShapes{BRepPrimAPI_MakeBox{size.X(), size.Y(), size.Z()}.Shape()});
 }
 
 Value builtin_cyl(const CallContext &c) {
-    double size[3] = { 1.0, 1.0, 1.0 };
+    auto pr = c.get<double>("r");
+    auto pd = c.get<double>("d");
+    double r = pr ? *pr : pd ? *pd : 1.0;
 
-    auto rv = c.get("r").as<double>();
-    double r = rv && *rv > 0 ? *rv : 1.0;
+    auto ph = c.get<double>("h");
+    double h = ph ? *ph : 1.0;
 
-    auto hv = c.get("h").as<double>();
-    double h = hv && *hv > 0 ? *hv : 1.0;
+    if (r <= 0.0 || h <= 0.0) {
+        return undefined;
+    }
 
-    return TaggedShapes{BRepPrimAPI_MakeCylinder{r, h}.Shape()};
+    return addShapeChildren(c, TaggedShapes{BRepPrimAPI_MakeCylinder{r, h}.Shape()});
+}
+
+Value builtin_align(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto parentp = c.get<TaggedShapes>("$parent");
+    if (!parentp) {
+        std::cerr << "No parent, cannot align";
+        return children;
+    }
+
+    auto parentBounds = getBoundingBox(*parentp);
+    auto childBounds = getBoundingBox(*parentp);
+
+    return undefined;
 }
 
 Value builtin_move(const CallContext &c) {
@@ -44,19 +119,35 @@ Value builtin_move(const CallContext &c) {
         return undefined;
     }
 
-    gp_Vec loc;
-    if (c.count() > 0) {
-        if (auto l = c.get<List>(0)) {
-            for (int i = 0; i < l->size() && i < 3; i++) {
-                if (auto n = (*l)[i].as<double>()) {
-                    loc.SetCoord(i + 1, *n);
-                }
-            }
-        }
+    gp_Trsf trsf;
+    trsf.SetTranslation(parseVec(c, 0.0));
+
+    TaggedShapes result;
+    for (const auto &c : children) {
+        result.emplace_back(c.shape.Moved(trsf), c.tags);
     }
 
+    return result;
+}
+
+Value builtin_rot(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto v = parseVec(c, 0.0);
+
     gp_Trsf trsf;
-    trsf.SetTranslation(loc);
+    if (v.X() != 0.0) {
+        trsf.SetRotation(gp_Ax1{{}, {1.0, 0.0, 0.0}}, v.X());
+    }
+    if (v.Y() != 0.0) {
+        trsf.SetRotation(gp_Ax1{{}, {0.0, 1.0, 0.0}}, v.Y());
+    }
+    if (v.Z() != 0.0) {
+        trsf.SetRotation(gp_Ax1{{}, {0.0, 0.0, 1.0}}, v.Z());
+    }
 
     TaggedShapes result;
     for (const auto &c : children) {
@@ -151,8 +242,10 @@ Value builtin_repeat(const CallContext &c) {
 
 void register_builtins_shapes(Environment &env) {
     env.add_function("box", builtin_box);
+    env.add_function("align", builtin_align);
     env.add_function("cyl", builtin_cyl);
     env.add_function("move", builtin_move);
+    env.add_function("rot", builtin_rot);
     env.add_function("tag", builtin_tag);
     env.add_function("combine", builtin_combine);
     env.add_function("repeat", builtin_repeat);

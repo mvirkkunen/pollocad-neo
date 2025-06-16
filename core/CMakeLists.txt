@@ -8,6 +8,9 @@ qt_add_library(PollocadCore
 
     builtins_shapes.cpp
     value.h value.cpp
+    logmessage.h
+    lexy_span.h
+    executorresult.h executorresult.cpp
 )
 
 target_include_directories(PollocadCore
