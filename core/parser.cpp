@@ -6,14 +6,15 @@
 #include "lexy_ext/report_error.hpp"
 
 #include "parser.h"
-#include "lexy_span.h"
+//#include "lexy_span.h"
 
 namespace dsl = lexy::dsl;
 
-using Input = lexy::range_input<lexy::utf8_encoding, std::string::iterator>;
-using Pos = std::string::iterator;
+using Input = lexy::range_input<lexy::utf8_encoding, std::string::const_iterator>;
+using Pos = std::string::const_iterator;
 
-Span getSpan(const Input &input, const Pos &start, const Pos &end) {
+template <typename Input, typename Iterator>
+Span getSpan(const Input &input, const Iterator &start, const Iterator &end) {
     auto loc = lexy::get_input_location(input, start);
     return Span(start - input.begin(), end - input.begin(), loc.line_nr(), loc.column_nr());
 }
@@ -25,6 +26,11 @@ struct ParseState {
         return getSpan(input, start, end);
     }
 };
+
+template <typename Ret, typename... Args>
+constexpr auto state_callback(Args... args) {
+    return lexy::bind(lexy::callback<Ret>(args...), lexy::parse_state, lexy::values);
+}
 
 namespace grammar
 {
@@ -48,36 +54,6 @@ std::vector<T> move_vec(T first, Rest... rest) {
     (vec.push_back(std::move(rest)), ...);
     return vec;
 }
-
-/*template <typename Child>
-struct span_p {
-    static constexpr Child child_;
-
-    static constexpr auto rule = dsl::position(child_);
-    static constexpr auto value =
-};
-
-template <typename Rule>
-constexpr auto span(Rule rule) {
-    return dsl::p<span_p<Rule>>;
-}*/
-
-/*template <typename Rule>
-struct span_p : lexy::scan_production<Span> {
-    Rule rule;
-
-    span_p(Rule rule) : rule(rule) { }
-
-    template <typename Reader, typename Context>
-    static constexpr scan_result scan(lexy::rule_scanner<Context, Reader>& scanner) {
-        auto start = scanner.begin();
-        scanner.parse(rule);
-    }
-};
-
-constexpr auto span(auto rule) {
-    return dsl::position(rule >> dsl::position);
-}*/
 
 struct ident {
     static constexpr auto rule = ident_class;
@@ -118,10 +94,10 @@ struct call_args {
 };
 
 struct expr_var_or_call {
-    static constexpr auto rule = dsl::p<ident> >> dsl::if_(dsl::p<call_args>);
-    static constexpr auto value = lexy::callback<ast::Expr>(
-        [](std::string name) { return ast::VarExpr{name}; },
-        [](std::string name, ast::CallExpr expr) { return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named)}; }
+    static constexpr auto rule = dsl::position(dsl::p<ident> >> dsl::position) >> dsl::if_(dsl::p<call_args>);
+    static constexpr auto value = state_callback<ast::Expr>(
+        [](ParseState st, Pos begin, std::string name, Pos end) { return ast::VarExpr{name, st.span(begin, end)}; },
+        [](ParseState st, Pos begin, std::string name, Pos end, ast::CallExpr expr) { return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)}; }
     );
 };
 
@@ -148,7 +124,10 @@ struct expr_string_literal : lexy::token_production {
 };
 
 struct expr_atom {
-    using PropertyAccess = std::variant<ast::Expr, std::string>;
+    struct PropertyAccess {
+        std::variant<ast::Expr, std::string> index;
+        Span span;
+    };
 
     static constexpr auto name = "expression atom";
 
@@ -158,14 +137,18 @@ struct expr_atom {
 
     struct bracketed_index_op_ : lexy::transparent_production {
         static constexpr auto name = "indexing expression";
-        static constexpr auto rule = dsl::square_bracketed(dsl::p<expr>);
-        static constexpr auto value = lexy::construct<PropertyAccess>;
+        static constexpr auto rule = dsl::square_bracketed(dsl::position + dsl::p<expr> + dsl::position);
+        static constexpr auto value = state_callback<PropertyAccess>(
+            [](ParseState st, Pos begin, ast::Expr index, Pos end) { return PropertyAccess{index, st.span(begin, end)}; }
+        );
     };
 
     struct property_access_op_ : lexy::transparent_production {
         static constexpr auto name = "property access expression";
-        static constexpr auto rule = dsl::lit_c<'.'> >> dsl::p<ident>;
-        static constexpr auto value = lexy::construct<PropertyAccess>;
+        static constexpr auto rule = dsl::lit_c<'.'> >> (dsl::position + dsl::p<ident> + dsl::position);
+        static constexpr auto value = state_callback<PropertyAccess>(
+            [](ParseState st, Pos begin, std::string index, Pos end) { return PropertyAccess{index, st.span(begin, end)}; }
+        );
     };
 
     struct index_ops_ {
@@ -184,21 +167,21 @@ struct expr_atom {
                                   | dsl::error<expected_expression_error>) + dsl::opt(dsl::p<index_ops_>);
     static constexpr auto value = lexy::callback<ast::Expr>(
         [](ast::Expr expr, lexy::nullopt = {}) { return std::move(expr); },
-        [](ast::Expr expr, std::vector<PropertyAccess> chain) {
+        [](ast::Expr expr, std::vector<PropertyAccess> access) {
             // TODO: maybe this could be a fold
-            for (const auto &v : chain) {
+            for (const auto &a : access) {
                 std::visit<void>(
-                    [&expr](const auto &v) {
+                    [&expr, &a](const auto &v) {
                         using T = std::decay_t<decltype(v)>;
                         if constexpr (std::is_same_v<T, ast::Expr>) {
-                            expr = ast::CallExpr{"[]", {expr, v}};
+                            expr = ast::CallExpr{"[]", {expr, v}, {}, a.span};
                         } else if constexpr (std::is_same_v<T, std::string>) {
-                            expr = ast::CallExpr{"[]", {expr, ast::LiteralExpr{v}}};
+                            expr = ast::CallExpr{"[]", {expr, ast::LiteralExpr{v}}, {}, a.span};
                         } else {
                             static_assert(false, "non-exhaustive visitor!");
                         }
                     },
-                    v);
+                    a.index);
             }
 
             return expr;
@@ -260,27 +243,29 @@ struct stmt_if {
 };
 
 struct stmt_let {
-    static constexpr auto rule = dsl::p<ident> + dsl::equal_sign + dsl::p<expr>;
-    static constexpr auto value = lexy::callback<ast::Expr>(
-        [](std::string name, ast::Expr ex) { return ast::LetExpr{std::move(name), std::move(ex)}; }
+    static constexpr auto rule = dsl::position + dsl::p<ident> + dsl::position + dsl::equal_sign + dsl::p<expr>;
+    static constexpr auto value = state_callback<ast::Expr>(
+        [](ParseState st, Pos begin, std::string name, Pos end, ast::Expr ex) { return ast::LetExpr{std::move(name), std::move(ex), st.span(begin, end)}; }
     );
 };
 
 struct stmt_call {
-    static constexpr auto rule = dsl::p<ident> + dsl::p<call_args> + (
+    static constexpr auto rule = dsl::position(dsl::p<ident>) + dsl::position + dsl::p<call_args> + (
         dsl::curly_bracketed(dsl::p<stmt_list>)
         | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> dsl::recurse<struct stmt_call>
         | dsl::else_ >> dsl::semicolon
     );
-    static constexpr auto value = lexy::callback<ast::Expr>(
-        [](std::string name, ast::CallExpr expr) { return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named)}; },
-        [](std::string name, ast::CallExpr expr, ast::ExprList children) {
-            expr.named.emplace("$children", ast::LambdaExpr{children});
-            return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named)};
+    static constexpr auto value = state_callback<ast::Expr>(
+        [](ParseState st, Pos begin, std::string name, Pos end, ast::CallExpr expr) {
+            return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};
         },
-        [](std::string name, ast::CallExpr expr, ast::Expr child) {
+        [](ParseState st, Pos begin, std::string name, Pos end, ast::CallExpr expr, ast::ExprList children) {
+            expr.named.emplace("$children", ast::LambdaExpr{children});
+            return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};
+        },
+        [](ParseState st, Pos begin, std::string name, Pos end, ast::CallExpr expr, ast::Expr child) {
             expr.named.emplace("$children", ast::LambdaExpr{ast::ExprList{{child}}});
-            return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named)};
+            return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};
         }
     );
 };
@@ -356,7 +341,7 @@ struct ErrorCallback {
 };
 
 ParseResult parse(std::string code) {
-    auto input = Input(code.begin(), code.end());
+    auto input = lexy::range_input<lexy::utf8_encoding, std::string::const_iterator>(code.cbegin(), code.cend());
 
     std::vector<LogMessage> errors;
     ErrorCallback errorCallback{input, errors};
@@ -368,10 +353,11 @@ ParseResult parse(std::string code) {
         })
     );*/
 
-    auto result = lexy::parse<grammar::document>(input, errorCallback);
+    auto parseState = ParseState{input};
+
+    auto result = lexy::parse<grammar::document>(input, parseState, errorCallback);
 
     if (result.is_error()) {
-        std::cout << "Parse error";
         return {{}, errors};
     }
 

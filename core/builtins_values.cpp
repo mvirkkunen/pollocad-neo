@@ -2,13 +2,13 @@
 
 Value builtin_if(const CallContext &c) {
     if (c.count() < 2) {
-        return RuntimeError{"Malformed if clause (too few arguments)"};
+        return c.error("Malformed if clause (too few arguments)");
     }
 
     if (c.get(0).truthy()) {
         auto then = c.get<Function>(1);
         if (!then) {
-            return RuntimeError{"Invalid then block in if clause"};
+            return c.error("Invalid then block in if clause");
         }
 
         return (**then)(c.empty());
@@ -25,13 +25,13 @@ Value builtin_if(const CallContext &c) {
     if (c.count() == 3) {
         auto else_ = c.get<Function>(2);
         if (!else_) {
-            return RuntimeError{"Invalid else block in if clause"};
+            return c.error("Invalid else block in if clause");
         }
 
         return (**else_)(c.empty());
     }
 
-    return RuntimeError{"Malformed if clause (too many arguments)"};
+    return c.error("Malformed if clause (too many arguments)");
 }
 
 Value builtin_minus(const CallContext &c) {
@@ -81,7 +81,7 @@ Value builtin_floor(const CallContext &c) {
 Value builtin_index(const CallContext &c) {
     auto alist = c.get<List>(0);
     if (!alist) {
-        return RuntimeError{"Cannot index value of this type"};
+        return c.error("Cannot index value of this type");
     }
 
     auto aindex = c.get<double>(1);
@@ -103,7 +103,7 @@ Value builtin_index(const CallContext &c) {
             }
 
             if (index == -1) {
-                return RuntimeError{std::format("Invalid swizzle access: .{}", *aname)};
+                return c.error(std::format("Invalid swizzle access: .{}", *aname));
             }
 
             result.push_back(index < alist->size() ? (*alist)[index] : undefined);

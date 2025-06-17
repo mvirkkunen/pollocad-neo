@@ -38,7 +38,8 @@ public:
     ExecutorResult(std::vector<LogMessage> messages, TopoDS_Shape shape) : m_messages(messages), m_shape(shape) { }
 
 public:
-    Q_INVOKABLE const LogMessageModel *messages() const;
+    const std::vector<LogMessage> &messages() const;
+    Q_INVOKABLE const LogMessageModel *messagesModel() const;
     const TopoDS_Shape &shape() const { return m_shape; }
     bool hasShape() const { return !m_shape.IsNull(); }
 

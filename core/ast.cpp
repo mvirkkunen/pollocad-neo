@@ -35,16 +35,16 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
             if constexpr (std::is_same_v<T, LiteralExpr>) {
                 os << space(indent) << "LiteralExpr{" << *ex.value << "}\n";
             } else if constexpr (std::is_same_v<T, VarExpr>) {
-                os << space(indent) << "VarExpr{" << ex.name << "}\n";
+                os << space(indent) << "VarExpr" << ex.span << "{" << ex.name << "}\n";
             } else if constexpr (std::is_same_v<T, LetExpr>) {
-                os << space(indent) << "LetExpr{\n";
+                os << space(indent) << "LetExpr" << ex.span << "{\n";
                 os << space(indent + 1) << ex.name << " = \n";
                 ex.value->dump(os, indent + 1);
                 //os << space(indent + 1) << "in:\n";
                 //ast::dump(os, ex.exprs, indent + 1);
                 os << space(indent) << "}\n";
             } else if constexpr (std::is_same_v<T, CallExpr>) {
-                os << space(indent) << "CallExpr{\n";
+                os << space(indent) << "CallExpr" << ex.span << "{\n";
                 os << space(indent + 1) << "" << ex.func << "\n";
                 for (const auto &ch : ex.positional) {
                     ch.dump(os, indent + 1);

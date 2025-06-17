@@ -62,10 +62,14 @@ Value addShapeChildren(const CallContext &c, TaggedShapes shape) {
             return children;
         }
 
+        if (children.undefined()) {
+            return shape;
+        }
+
         if (auto childShapes = children.as<TaggedShapes>()) {
             std::move(childShapes->begin(), childShapes->end(), std::back_inserter(shape));
         } else {
-            std::cerr << "Invalid children for shape";
+            return c.error("Invalid children for shape");
         }
     }
 

@@ -2,14 +2,25 @@ import QtQuick
 import QtQuick.Controls
 import pollocad
 
-Window {
+ApplicationWindow {
     property bool pendingExecute: false
     property bool shapeOutOfDate: false
 
+    id: window
     width: 1800
     height: 900
     visible: true
     title: qsTr("pollocad NEO")
+
+    menuBar: MenuBar {
+        Menu {
+            title: "&File"
+            Action { text: "E&xit"; onTriggered: window.close() }
+        }
+        Menu {
+            title: "&View"
+        }
+    }
 
     SplitView {
         id: hSplit
@@ -138,6 +149,7 @@ thin_cyl(100, 110, 50);
                             anchors.fill: parent
 
                             onClicked: {
+                                console.log(location);
                                 code.cursorPosition = location;
                             }
                         }
@@ -146,6 +158,7 @@ thin_cyl(100, 110, 50);
                             id: text
                             text: message
                             clip: true
+                            padding: 8
                             font.family: "monospace"
                         }
                     }
@@ -163,6 +176,7 @@ thin_cyl(100, 110, 50);
     }
 
     Component.onCompleted: {
+        highlighter.setTextDocument(code.textDocument);
         executor.execute(code.text);
     }
 
@@ -171,7 +185,8 @@ thin_cyl(100, 110, 50);
 
         function onResult(res) {
             viewer.setResult(res);
-            messages.model = res.messages();
+            highlighter.setResult(res);
+            messages.model = res.messagesModel();
             shapeOutOfDate = !res.hasShape;
         }
 

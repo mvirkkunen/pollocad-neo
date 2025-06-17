@@ -80,7 +80,6 @@ struct LambdaExpr {
     ExprList body;
     std::vector<Arg> args;
     std::string name;
-    Span span;
 
     bool operator==(const LambdaExpr&) const = default;
 };

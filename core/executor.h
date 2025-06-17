@@ -44,11 +44,12 @@ public:
 
     bool canceled() const { return m_execContext.promise.isCanceled(); }
 
-    void error(const std::string &msg) {
-        m_execContext.messages.push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
+    RuntimeError error(const std::string &msg) const {
+        m_execContext.messages.push_back(LogMessage{LogMessage::Level::Error, msg, m_span});
+        return RuntimeError{msg};
     }
 
-    void warning(const std::string &msg) {
+    void warning(const std::string &msg) const {
         m_execContext.messages.push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
     }
 

@@ -3,6 +3,7 @@ import QtQuick.Controls
 
 Item {
     property alias text: code.text
+    property alias textDocument: code.textDocument
     property alias cursorPosition: code.cursorPosition
     property int lineNumberWidth: hiddenLineNumber.width * Math.max(Math.ceil(Math.log(code.lineCount + 1) / Math.LN10), 4)
 
@@ -107,10 +108,6 @@ Item {
                     tabIndent(ev.modifiers & Qt.ShiftModifier);
                     ev.accepted = true;
                 }
-            }
-
-            Component.onCompleted: {
-                util.setupTextDocument(code.textDocument);
             }
 
             function adjustNumber(delta) {

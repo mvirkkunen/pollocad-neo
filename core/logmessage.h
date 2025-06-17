@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iosfwd>
 #include <QObject>
 
 class Span
@@ -12,7 +13,7 @@ class Span
     Q_PROPERTY(int column READ column CONSTANT);
 
     Q_PROPERTY(int length READ length CONSTANT);
-    Q_PROPERTY(bool empty READ empty CONSTANT);
+    Q_PROPERTY(bool isEmpty READ isEmpty CONSTANT);
 
 public:
     Span() { }
@@ -27,10 +28,10 @@ public:
     int column() const { return m_column; }
 
     int length() const {
-        return empty() ? -1 : m_end - m_begin;
+        return isEmpty() ? -1 : m_end - m_begin;
     }
 
-    bool empty() const {
+    bool isEmpty() const {
         return (m_begin == -1 || m_end == -1 || m_line == -1 || m_column == -1);
     }
 
@@ -42,6 +43,14 @@ private:
     int m_line = -1;
     int m_column = -1;
 };
+
+inline std::ostream &operator<<(std::ostream &os, const Span &span) {
+    if (span.isEmpty()) {
+        return os << "[?-?]";
+    } else {
+        return os << "[" << span.begin() << "-" << span.end() << "]";
+    }
+}
 
 class LogMessage
 {

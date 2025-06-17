@@ -112,9 +112,9 @@ void ExecutorThread::run() {
 
     //m_logCallback(LogMessage::info("Starting evaluation"));
 
-    auto parserResult = parse(m_code);
-    //auto &errors = parserResult.errors;
-    //auto errors = std::vector<LogMessage>(parserResult.errors.begin(), parserResult.errors.end());
+    const auto parserResult = parse(m_code);
+
+    std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(m_context->messages));
 
     if (!parserResult.result) {
         promise.addResult(ExecutorResult{parserResult.errors, {}});
@@ -176,7 +176,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                 }
 
                 if (env->vars.contains(ex.name)) {
-                    context->messages.push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is already defined", ex.name), ex.span});
+                    context->messages.push_back(LogMessage{LogMessage::Level::Error, std::format("'{}' is already defined", ex.name), ex.span});
                     return undefined;
                 }
 

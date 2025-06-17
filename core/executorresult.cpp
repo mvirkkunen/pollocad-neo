@@ -1,6 +1,10 @@
 #include "executorresult.h"
 
-const LogMessageModel *ExecutorResult::messages() const {
+const std::vector<LogMessage> &ExecutorResult::messages() const {
+    return m_messages;
+}
+
+const LogMessageModel *ExecutorResult::messagesModel() const {
     return new LogMessageModel(m_messages);
 }
 
