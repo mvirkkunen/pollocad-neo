@@ -94,6 +94,8 @@ struct call_args {
 };
 
 struct expr_var_or_call {
+    static constexpr const char *name = "function call expression";
+
     static constexpr auto rule = dsl::position(dsl::p<ident> >> dsl::position) >> dsl::if_(dsl::p<call_args>);
     static constexpr auto value = state_callback<ast::Expr>(
         [](ParseState st, Pos begin, std::string name, Pos end) { return ast::VarExpr{name, st.span(begin, end)}; },
@@ -235,6 +237,7 @@ struct expr_ : lexy::expression_production
 };
 
 struct stmt_if {
+    static constexpr auto name = "if statement";
     static constexpr auto rule = kw_if + dsl::p<expr> + dsl::p<expr_block> + dsl::if_(kw_else >> dsl::p<expr_block>);
     static constexpr auto value = lexy::callback<ast::Expr>(
         [](ast::Expr condition, ast::Expr then) { return ast::CallExpr{"if", move_vec(std::move(condition), std::move(then))}; },
@@ -243,6 +246,7 @@ struct stmt_if {
 };
 
 struct stmt_let {
+    static constexpr auto name = "assignment statement";
     static constexpr auto rule = dsl::position + dsl::p<ident> + dsl::position + dsl::equal_sign + dsl::p<expr>;
     static constexpr auto value = state_callback<ast::Expr>(
         [](ParseState st, Pos begin, std::string name, Pos end, ast::Expr ex) { return ast::LetExpr{std::move(name), std::move(ex), st.span(begin, end)}; }
@@ -250,6 +254,7 @@ struct stmt_let {
 };
 
 struct stmt_call {
+    static constexpr auto name = "function call statement";
     static constexpr auto rule = dsl::position(dsl::p<ident>) + dsl::position + dsl::p<call_args> + (
         dsl::curly_bracketed(dsl::p<stmt_list>)
         | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> dsl::recurse<struct stmt_call>

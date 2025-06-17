@@ -53,6 +53,10 @@ public:
         m_execContext.messages.push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
     }
 
+    void info(const std::string &msg) const {
+        m_execContext.messages.push_back(LogMessage{LogMessage::Level::Info, msg, m_span});
+    }
+
     const TaggedShapes children() const;
 
     CallContext empty() const {

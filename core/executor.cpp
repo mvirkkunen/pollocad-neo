@@ -183,16 +183,18 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                 env->vars.emplace(ex.name, val);
                 return undefined;
             } else if constexpr (std::is_same_v<T, ast::CallExpr>) {
+                bool error = false;
+
                 Value funcVal;
                 if (!env->get(ex.func, funcVal)) {
                     context->messages.push_back(LogMessage{LogMessage::Level::Warning, std::format("Function '{}' not found", ex.func), ex.span});
-                    return undefined;
+                    error = true;
                 }
 
                 auto func = funcVal.as<Function>();
-                if (!func) {
-                    context->messages.push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is not afunction", ex.func), ex.span});
-                    return undefined;
+                if (!func && !error) {
+                    context->messages.push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.type()), ex.span});
+                    error = true;
                 }
 
                 std::vector<Value> positional;
@@ -203,7 +205,8 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                     auto val = eval(context, env, &ch);
                     if (val.error()) {
-                        return val;
+                        error = true;
+                        continue;
                     }
 
                     positional.push_back(val);
@@ -217,10 +220,15 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                     auto val = eval(context, env, &*ch);
                     if (val.error()) {
-                        return val;
+                        error = true;
+                        continue;
                     }
 
                     named.emplace(name, val);
+                }
+
+                if (error) {
+                    return undefined;
                 }
 
                 return (**func)(CallContext{positional, named, *context, ex.span});

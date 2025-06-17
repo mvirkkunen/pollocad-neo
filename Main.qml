@@ -3,7 +3,6 @@ import QtQuick.Controls
 import pollocad
 
 ApplicationWindow {
-    property bool pendingExecute: false
     property bool shapeOutOfDate: false
 
     id: window
@@ -63,13 +62,8 @@ thin_cyl(100, 110, 50);
 `.trim()
 
             onCodeChanged: {
-                typingTimeout.restart();
-
-                if (executor.isBusy) {
-                    pendingExecute = true;
-                } else {
-                    pendingExecute = false;
-                    executor.execute(code.text);
+                if (!typingTimeout.running) {
+                    typingTimeout.restart();
                 }
             }
         }
@@ -141,25 +135,27 @@ thin_cyl(100, 110, 50);
                     spacing: 2
 
                     delegate: Rectangle {
-                        width: messages.width
+                        width: parent.width
                         height: text.implicitHeight
-                        color: "#fff"
-
-                        MouseArea {
-                            anchors.fill: parent
-
-                            onClicked: {
-                                console.log(location);
-                                code.cursorPosition = location;
-                            }
-                        }
 
                         Text {
                             id: text
+                            color: level === "error" ? "#800" : level === "warning" ? "#880" : "#000"
                             text: message
                             clip: true
                             padding: 8
                             font.family: "monospace"
+                        }
+
+                        MouseArea {
+                            id: ma
+                            anchors.fill: parent
+
+                            onClicked: {
+                                console.log("what");
+                                console.log(location);
+                                code.cursorPosition = location;
+                            }
                         }
                     }
                 }
@@ -170,7 +166,7 @@ thin_cyl(100, 110, 50);
     Shortcut {
         sequences: [StandardKey.Refresh]
         onActivated: {
-            pendingExecute = false;
+            typingTimeout.stop();
             executor.execute(code.text);
         }
     }
@@ -189,17 +185,11 @@ thin_cyl(100, 110, 50);
             messages.model = res.messagesModel();
             shapeOutOfDate = !res.hasShape;
         }
-
-        function onIsBusyChanged() {
-            if (pendingExecute && !executor.isBusy) {
-                pendingExecute = false;
-                executor.execute(code.text);
-            }
-        }
     }
 
     Timer {
         id: typingTimeout
         interval: 1000
+        onTriggered: executor.execute(code.text);
     }
 }

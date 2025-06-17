@@ -7,6 +7,8 @@ Item {
     property alias cursorPosition: code.cursorPosition
     property int lineNumberWidth: hiddenLineNumber.width * Math.max(Math.ceil(Math.log(code.lineCount + 1) / Math.LN10), 4)
 
+    property string prevText: ""
+
     signal codeChanged()
 
     Flickable {
@@ -61,6 +63,7 @@ Item {
             width: 50
             height: code.height
             model: code.lineCount
+            reuseItems: true
 
             delegate: Text {
                 width: lineNumberWidth
@@ -78,8 +81,9 @@ Item {
             font.family: "Monospace"
 
             onTextChanged: {
-                if (!debouncer.running) {
-                    debouncer.start();
+                if (code.text !== prevText) {
+                    prevText = code.text;
+                    codeChanged();
                 }
             }
 
@@ -176,12 +180,6 @@ Item {
 
                 textChanged();
             }
-        }
-
-        Timer {
-            id: debouncer
-            interval: 10
-            onTriggered: codeChanged();
         }
     }
 }

@@ -1,5 +1,8 @@
 #include "executor.h"
 
+namespace
+{
+
 Value builtin_if(const CallContext &c) {
     if (c.count() < 2) {
         return c.error("Malformed if clause (too few arguments)");
@@ -80,49 +83,95 @@ Value builtin_floor(const CallContext &c) {
 
 Value builtin_index(const CallContext &c) {
     auto alist = c.get<List>(0);
-    if (!alist) {
-        return c.error("Cannot index value of this type");
-    }
-
-    auto aindex = c.get<double>(1);
-    if (aindex) {
-        size_t index = static_cast<size_t>(*aindex);
-        return (index < alist->size()) ? (*alist)[index] : undefined;
-    }
-
-    auto aname = c.get<std::string>(1);
-    if (aname) {
-        std::vector<Value> result;
-        for (const char ch : *aname) {
-            ssize_t index = -1;
-            switch (ch) {
-                case 'x': case 'r': index = 0; break;
-                case 'y': case 'g': index = 1; break;
-                case 'z': case 'b': index = 2; break;
-                case 'w': case 'a': index = 3; break;
-            }
-
-            if (index == -1) {
-                return c.error(std::format("Invalid swizzle access: .{}", *aname));
-            }
-
-            result.push_back(index < alist->size() ? (*alist)[index] : undefined);
+    if (alist) {
+        auto aindex = c.get<double>(1);
+        if (aindex) {
+            size_t index = static_cast<size_t>(*aindex);
+            return (index < alist->size()) ? (*alist)[index] : undefined;
         }
 
-        if (result.size() == 1) {
-            return result[0];
+        auto aname = c.get<std::string>(1);
+        if (aname) {
+            std::vector<Value> result;
+            for (const char ch : *aname) {
+                ssize_t index = -1;
+                switch (ch) {
+                    case 'x': case 'r': index = 0; break;
+                    case 'y': case 'g': index = 1; break;
+                    case 'z': case 'b': index = 2; break;
+                    case 'w': case 'a': index = 3; break;
+                }
+
+                if (index == -1) {
+                    return c.error(std::format("Invalid swizzle access: .{}", *aname));
+                }
+
+                result.push_back(index < alist->size() ? (*alist)[index] : undefined);
+            }
+
+            if (result.size() == 1) {
+                return result[0];
+            }
+
+            return result;
         }
 
-        return result;
+        return c.error("Invalid type of index for indexing a list");
     }
 
-    return RuntimeError{"Invalid type for index"};
+    auto astring = c.get<std::string>(0);
+    if (astring) {
+        auto aindex = c.get<double>(1);
+        if (aindex) {
+            size_t index = static_cast<size_t>(*aindex);
+            return (index < astring->size()) ? Value{std::string(1, (*astring).at(index))} : undefined;
+        }
+
+        return c.error("Invalid type of index for indexing a string");
+    }
+
+    return c.error("Cannot index value of this type");
 }
 
 Value builtin_list(const CallContext &c) {
     return c.positional();
 }
 
+Value builtin_type(const CallContext &c) {
+    if (c.positional().empty()) {
+        return undefined;
+    }
+
+    return c.positional().at(0).type();
+}
+
+Value builtin_str(const CallContext &c) {
+    if (c.positional().empty()) {
+        return undefined;
+    }
+
+    std::stringstream ss;
+    c.positional().at(0).display(ss);
+    return ss.str();
+}
+
+Value builtin_echo(const CallContext &c) {
+    std::stringstream ss;
+
+    for (const auto &arg : c.positional()) {
+        arg.display(ss);
+    }
+
+    for (const auto &arg: c.named()) {
+        ss << arg.first << "=";
+        arg.second.display(ss);
+    }
+
+    c.info(ss.str());
+    return undefined;
+}
+
+}
 
 void register_builtins_values(Environment &env) {
     env.add_function("[]", builtin_index);
@@ -134,4 +183,7 @@ void register_builtins_values(Environment &env) {
     env.add_function("%", builtin_bin_op([](auto a, auto b) { return static_cast<int>(a) % static_cast<int>(b); }));
     env.add_function("list", builtin_list);
     env.add_function("floor", builtin_floor);
+    env.add_function("type", builtin_type);
+    env.add_function("str", builtin_str);
+    env.add_function("echo", builtin_echo);
 }

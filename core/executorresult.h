@@ -11,8 +11,8 @@ class LogMessageModel : public QAbstractListModel {
 
 public:
     enum Roles {
-        Type = 1,
-        Message = Qt::DisplayRole,
+        Level = 1,
+        Message = 2,
         Location = 3,
     };
 

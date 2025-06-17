@@ -55,3 +55,65 @@ std::ostream& operator<<(std::ostream& os, const Value& val) {
 
     return os;
 }
+
+void Value::display(std::ostream &os) const {
+    std::visit(
+        [&os](const auto &v) {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, Undefined>) {
+                os << "{Undefined}";
+            } else if constexpr (std::is_same_v<T, double>) {
+                os << v;
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                os << v;
+            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
+                os << "{Shapes}";
+            } else if constexpr (std::is_same_v<T, Function>) {
+                os << "{Function}";
+            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
+                bool first = true;
+
+                os << "[";
+                for (const auto& c : v) {
+                    if (first) {
+                        first = false;
+                    } else {
+                        os << ", ";
+                    }
+
+                    c.display(os);
+                }
+                os << "]";
+            } else if constexpr (std::is_same_v<T, RuntimeError>) {
+                os << "{RuntimeError}";
+            } else {
+                static_assert(false, "non-exhaustive visitor!");
+            }
+        },
+        v);
+}
+
+std::string Value::type() const {
+    return std::visit(
+        [](const auto &v) {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, Undefined>) {
+                return "undefined";
+            } else if constexpr (std::is_same_v<T, double>) {
+                return "number";
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                return "string";
+            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
+                return "shape";
+            } else if constexpr (std::is_same_v<T, Function>) {
+                return "function";
+            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
+                return "list";
+            } else if constexpr (std::is_same_v<T, RuntimeError>) {
+                return "error";
+            } else {
+                static_assert(false, "non-exhaustive visitor!");
+            }
+        },
+        v);
+}

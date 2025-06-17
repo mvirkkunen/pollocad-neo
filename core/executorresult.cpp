@@ -23,11 +23,11 @@ QVariant LogMessageModel::data(const QModelIndex &index, int role) const {
     const auto &msg = m_messages[index.row()];
 
     switch (role) {
-    case Type:
+    case Level:
         switch (msg.level()) {
-            case LogMessage::Level::Info: return "";
-            case LogMessage::Level::Warning: return "Warn";
-            case LogMessage::Level::Error: default: return "Err";
+            case LogMessage::Level::Info: return "info";
+            case LogMessage::Level::Warning: return "warning";
+            case LogMessage::Level::Error: default: return "error";
         }
     case Message:
         return msg.message();
@@ -40,7 +40,7 @@ QVariant LogMessageModel::data(const QModelIndex &index, int role) const {
 
 QHash<int, QByteArray> LogMessageModel::roleNames() const {
     return {
-        {Type, "type"},
+        {Level, "level"},
         {Message, "message"},
         {Location, "location"},
     };

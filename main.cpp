@@ -43,6 +43,10 @@ protected:
         //setFormat(0, 10, QColor::fromRgb(255, 255, 0));
 
         for (const auto &msg : m_messages) {
+            if (msg.level() == LogMessage::Level::Info) {
+                continue;
+            }
+
             //qDebug() << "checking: " << msg.span().begin() << "-" << msg.span().end();
 
             if (msg.span().begin() < end && msg.span().end() > begin) {

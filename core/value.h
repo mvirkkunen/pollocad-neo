@@ -67,6 +67,9 @@ public:
 
     bool truthy() const;
 
+    void display(std::ostream &os) const;
+    std::string type() const;
+
     friend std::ostream& operator<<(std::ostream& os, const Value& val);
 
     bool operator==(const Value &) const = default;
