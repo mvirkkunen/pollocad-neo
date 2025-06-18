@@ -10,6 +10,10 @@
 namespace
 {
 
+double degToRad(double deg) {
+    return deg * (M_PI / 180.0);
+}
+
 TopoDS_Compound toCompound(const TaggedShapes& shapes) {
     TopoDS_Builder builder;
     TopoDS_Compound comp;
@@ -144,13 +148,13 @@ Value builtin_rot(const CallContext &c) {
 
     gp_Trsf trsf;
     if (v.X() != 0.0) {
-        trsf.SetRotation(gp_Ax1{{}, {1.0, 0.0, 0.0}}, v.X());
+        trsf.SetRotation(gp_Ax1{{}, {1.0, 0.0, 0.0}}, degToRad(v.X()));
     }
     if (v.Y() != 0.0) {
-        trsf.SetRotation(gp_Ax1{{}, {0.0, 1.0, 0.0}}, v.Y());
+        trsf.SetRotation(gp_Ax1{{}, {0.0, 1.0, 0.0}}, degToRad(v.Y()));
     }
     if (v.Z() != 0.0) {
-        trsf.SetRotation(gp_Ax1{{}, {0.0, 0.0, 1.0}}, v.Z());
+        trsf.SetRotation(gp_Ax1{{}, {0.0, 0.0, 1.0}}, degToRad(v.Z()));
     }
 
     TaggedShapes result;
