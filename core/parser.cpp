@@ -267,7 +267,7 @@ struct stmt_call {
     static constexpr auto rule = dsl::position(dsl::p<ident>) + dsl::position + dsl::p<call_args> + (
         dsl::curly_bracketed(dsl::p<stmt_list>)
         | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> dsl::recurse<struct stmt_call>
-        | dsl::else_ >> dsl::semicolon
+        | dsl::else_ >> dsl::peek(dsl::semicolon | dsl::lit_c<'}'> | dsl::eof)
     );
     static constexpr auto value = state_callback<ast::Expr>(
         [](ParseState &st, Pos begin, std::string name, Pos end, ast::CallExpr expr) {
@@ -320,8 +320,7 @@ struct stmt_list_
            | dsl::else_ >> (
                 dsl::p<expr>
                     + (
-                        dsl::semicolon
-                        | dsl::peek(dsl::eof | dsl::lit_c<'}'>)
+                        dsl::peek(dsl::semicolon | dsl::eof | dsl::lit_c<'}'>)
                         | dsl::else_ >> dsl::error<expected_statement_error>)
                     + dsl::opt(dsl::peek_not(dsl::eof) >> dsl::p<stmt_list>));
 
