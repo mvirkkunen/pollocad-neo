@@ -42,23 +42,10 @@ ApplicationWindow {
             SplitView.preferredWidth: 600
 
             text: `
-move([10, 0, 0]) {
-    box([50,10,10]);
-    box([100, 100, 1]);
+combine() {
+  fillet("z", 5) box([50, 50, 10]);
+  tag("remove") tag("highlight") move([25, 25, -5]) cyl(r=5, h=20);
 }
-
-
-move([0, 0, 50]) {
-    repeat(25) move([25 * floor($i / 10), 25 * ($i % 10)]) cyl(r=10, h=50);
-}
-
-def thin_cyl(x, y, height) {
-    move([x, y]) cyl(r=1, h=height);
-}
-
-thin_cyl(100, 100, 100);
-thin_cyl(100, 110, 50);
-
 `.trim()
 
             onCodeChanged: {

@@ -290,8 +290,10 @@ void OcctWrapper::setResult(BackgroundExecutorResult *result) {
         Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape());
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
 
-        auto pcolor = sh.getProp("color").as<std::string>();
-        if (pcolor) {
+        if (sh.hasProp("highlight")) {
+            aisShape->SetColor(Quantity_Color{Quantity_NOC_RED});
+            aisShape->SetTransparency();
+        } else if (auto pcolor = sh.getProp("color").as<std::string>()) {
             auto colorName = pcolor->c_str();
 
             Quantity_Color color;

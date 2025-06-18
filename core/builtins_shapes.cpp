@@ -227,13 +227,21 @@ Value builtin_combine(const CallContext &c) {
         return undefined;
     }
 
+    ShapeList result;
+    std::copy_if(
+        children.begin(),
+        children.end(),
+        std::back_inserter(result),
+        [](const auto &ch) { return ch.hasProp("highlight"); }
+    );
+    
     auto remove = std::partition(children.begin(), children.end(), [](const auto& s) { return !s.hasProp("remove"); });
     if (remove == children.begin()) {
         return undefined;
     }
 
     auto it = children.cbegin();
-    TopoDS_Shape result = it->shape();
+    TopoDS_Shape shape = it->shape();
     it++;
 
     for (; it != remove; it++) {
@@ -241,9 +249,9 @@ Value builtin_combine(const CallContext &c) {
             return undefined;
         }
 
-        BRepAlgoAPI_Fuse fuse{result, it->shape()};
+        BRepAlgoAPI_Fuse fuse{shape, it->shape()};
         fuse.SimplifyResult();
-        result = fuse.Shape();
+        shape = fuse.Shape();
     }
 
     for (; it != children.end(); it++) {
@@ -251,12 +259,13 @@ Value builtin_combine(const CallContext &c) {
             return undefined;
         }
 
-        BRepAlgoAPI_Cut cut{result, it->shape()};
+        BRepAlgoAPI_Cut cut{shape, it->shape()};
         cut.SimplifyResult();
-        result = cut.Shape();
+        shape = cut.Shape();
     }
 
-    return ShapeList{result};
+    result.push_back(shape);
+    return result;
 }
 
 Value builtin_repeat(const CallContext &c) {

@@ -54,7 +54,7 @@ auto kw_if = LEXY_KEYWORD("if", ident_chars);
 auto kw_else = LEXY_KEYWORD("else", ident_chars);
 auto kw_def = LEXY_KEYWORD("def", ident_chars);
 
-constexpr auto ident_class = ident_chars.reserve(kw_if, kw_else);
+constexpr auto ident_class = ident_chars.reserve(kw_if, kw_else, kw_def);
 
 template <typename T, typename... Rest>
 std::vector<T> move_vec(T first, Rest... rest) {
@@ -212,6 +212,7 @@ constexpr auto op_minus = op<'-'>;
 constexpr auto op_mul = op<'*'>;
 constexpr auto op_div = op<'/'>;
 constexpr auto op_mod = op<'%'>;
+constexpr auto op_highlight = op<'#'>;
 
 struct expr_ : lexy::expression_production
 {
@@ -219,7 +220,7 @@ struct expr_ : lexy::expression_production
 
     struct prefix : dsl::prefix_op
     {
-        static constexpr auto op = op_minus;
+        static constexpr auto op = op_minus / op_highlight;
         using operand = dsl::atom;
     };
 
@@ -241,6 +242,11 @@ struct expr_ : lexy::expression_production
         [](ast::ExprList exprs) { return ast::CallExpr{"-"}; },
         [](ast::Expr expr) { return std::move(expr); },
         [](lexy::op<op_minus>, ast::Expr val) { return ast::CallExpr{"-", move_vec(std::move(val))}; },
+        [](lexy::op<op_highlight>, ast::Expr val) {
+            auto highlight = ast::CallExpr{"prop", {ast::LiteralExpr{"highlight"}, ast::LiteralExpr{true}}};
+            highlight.named.emplace("$children", ast::LambdaExpr{ast::ExprList{{val}}});
+            return highlight;
+        },
         [](ast::Expr lhs, lexy::op<op_mul>, ast::Expr rhs) { return ast::CallExpr{"*", move_vec(std::move(lhs), std::move(rhs))}; },
         [](ast::Expr lhs, lexy::op<op_div>, ast::Expr rhs) { return ast::CallExpr{"/", move_vec(std::move(lhs), std::move(rhs))}; },
         [](ast::Expr lhs, lexy::op<op_mod>, ast::Expr rhs) { return ast::CallExpr{"%", move_vec(std::move(lhs), std::move(rhs))}; },
@@ -267,13 +273,29 @@ struct stmt_let {
 };
 
 struct stmt_call {
+    struct highlight_tag_ {};
+
+    struct highlight_ {
+        static constexpr auto rule = dsl::hash_sign;
+        static constexpr auto value = lexy::construct<highlight_tag_>;
+    };
+
     static constexpr auto name = "function call statement";
-    static constexpr auto rule = dsl::position(dsl::p<ident>) + dsl::position + dsl::p<call_args> + (
-        dsl::curly_bracketed(dsl::p<stmt_list>)
-        | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> dsl::recurse<struct stmt_call>
-        | dsl::else_ >> dsl::peek(dsl::semicolon | dsl::lit_c<'}'> | dsl::eof)
+    static constexpr auto rule = (
+        dsl::hash_sign >> dsl::recurse<struct stmt_call>
+        | dsl::else_ >> (dsl::position(dsl::p<ident>) + dsl::position + dsl::p<call_args> + (
+            dsl::curly_bracketed(dsl::p<stmt_list>)
+            | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> dsl::recurse<struct stmt_call>
+            | dsl::peek(dsl::hash_sign) >> dsl::recurse<struct stmt_call>
+            | dsl::else_ >> dsl::peek(dsl::semicolon | dsl::lit_c<'}'> | dsl::eof))
+        )
     );
     static constexpr auto value = state_callback<ast::Expr>(
+        [](ParseState &st, ast::Expr child) {
+            auto highlight = ast::CallExpr{"prop", {ast::LiteralExpr{"highlight"}, ast::LiteralExpr{true}}};
+            highlight.named.emplace("$children", ast::LambdaExpr{ast::ExprList{{child}}});
+            return highlight;
+        },
         [](ParseState &st, Pos begin, std::string name, Pos end, ast::CallExpr expr) {
             return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};
         },
@@ -285,6 +307,11 @@ struct stmt_call {
             expr.named.emplace("$children", ast::LambdaExpr{ast::ExprList{{child}}});
             return ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};
         }
+        /*[](ParseState &st, Pos begin, std::string name, Pos end, ast::CallExpr expr, highlight_tag_, ast::Expr child) {
+            expr.named.emplace("$children", ast::LambdaExpr{ast::ExprList{{child}}});
+            ast::Expr call = ast::CallExpr{name, std::move(expr.positional), std::move(expr.named), st.span(begin, end)};;
+            return ast::CallExpr{"prop", {ast::LiteralExpr{"highlight"}}, {{"$children", std::move(call)}}};
+        }*/
     );
 };
 
@@ -321,6 +348,7 @@ struct stmt_list_
            | dsl::peek(kw_def) >> (dsl::p<stmt_def> + dsl::p<stmt_list>)
            | dsl::peek(dsl::p<ident> + ws + dsl::equal_sign) >> (dsl::p<stmt_let> + dsl::semicolon + dsl::p<stmt_list>)
            | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>) >> (dsl::p<stmt_call> + dsl::p<stmt_list>)
+           | dsl::peek(dsl::hash_sign) >> (dsl::p<stmt_call> + dsl::p<stmt_list>)
            | dsl::else_ >> (
                 dsl::p<expr>
                     + (
