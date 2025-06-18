@@ -49,6 +49,10 @@ private slots:
             << "1"
             << Value{1.0};
 
+        QTest::newRow("decimal_number") //
+            << "1.5"
+            << Value{1.5};
+
         QTest::newRow("addition") //
             << "1 + 1"
             << Value{2.0};

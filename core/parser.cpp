@@ -125,7 +125,11 @@ struct expr_list {
 struct expr_number_literal : lexy::token_production {
     static constexpr auto rule = dsl::peek(dsl::sign + ws + dsl::digit<>) >> dsl::capture(dsl::token(dsl::sign + dsl::digits<> + dsl::opt(dsl::period >> dsl::digits<>)));
     static constexpr auto value = lexy::as_string<std::string>
-        | lexy::callback<ast::Expr>([](std::string value) { return ast::LiteralExpr{std::stod(value)}; });
+        | lexy::callback<ast::Expr>([](std::string value) {
+            double n;
+            std::istringstream(value) >> n;
+            return ast::LiteralExpr{n};
+        });
 };
 
 struct expr_string_literal : lexy::token_production {
