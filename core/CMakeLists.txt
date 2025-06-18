@@ -1,16 +1,12 @@
-
-
-qt_add_library(PollocadCore
-    ast.h ast.cpp
-    executor.h executor.cpp
+add_library(PollocadCore
     parser.h parser.cpp
-    builtins_values.cpp
-
-    builtins_shapes.cpp
+    ast.h ast.cpp
     value.h value.cpp
+    contexts.cpp contexts.h
+    executor.h executor.cpp
     logmessage.h
-    lexy_span.h
-    executorresult.h executorresult.cpp
+    builtins_values.cpp
+    builtins_shapes.cpp
 )
 
 target_include_directories(PollocadCore
@@ -23,7 +19,6 @@ target_link_directories(PollocadCore PUBLIC /home/matti/devel/OCCT/build/lin64/g
 
 target_link_libraries(PollocadCore
     PUBLIC
-        Qt6::Core
         TKBO
         TKBRep
         TKernel

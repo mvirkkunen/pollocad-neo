@@ -27,8 +27,8 @@ std::ostream& operator<<(std::ostream& os, const Value& val) {
                 os << v;
             } else if constexpr (std::is_same_v<T, std::string>) {
                 os << std::quoted(v);
-            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
-                os << "{TaggedShapes}";
+            } else if constexpr (std::is_same_v<T, ShapeList>) {
+                os << "{ShapeList}";
             } else if constexpr (std::is_same_v<T, Function>) {
                 os << "{Function}";
             } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
@@ -45,8 +45,6 @@ std::ostream& operator<<(std::ostream& os, const Value& val) {
                     os << c;
                 }
                 os << "]";
-            } else if constexpr (std::is_same_v<T, RuntimeError>) {
-                os << "{RuntimeError: " << v.error << "}\n";
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
@@ -66,7 +64,7 @@ void Value::display(std::ostream &os) const {
                 os << v;
             } else if constexpr (std::is_same_v<T, std::string>) {
                 os << v;
-            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
+            } else if constexpr (std::is_same_v<T, ShapeList>) {
                 os << "{Shapes}";
             } else if constexpr (std::is_same_v<T, Function>) {
                 os << "{Function}";
@@ -84,8 +82,6 @@ void Value::display(std::ostream &os) const {
                     c.display(os);
                 }
                 os << "]";
-            } else if constexpr (std::is_same_v<T, RuntimeError>) {
-                os << "{RuntimeError}";
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
@@ -103,14 +99,12 @@ std::string Value::type() const {
                 return "number";
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return "string";
-            } else if constexpr (std::is_same_v<T, TaggedShapes>) {
-                return "shape";
+            } else if constexpr (std::is_same_v<T, ShapeList>) {
+                return "shapelist";
             } else if constexpr (std::is_same_v<T, Function>) {
                 return "function";
             } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
                 return "list";
-            } else if constexpr (std::is_same_v<T, RuntimeError>) {
-                return "error";
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }

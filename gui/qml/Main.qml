@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import pollocad
+import pollocadgui
 
 ApplicationWindow {
     property bool shapeOutOfDate: false
@@ -183,7 +183,7 @@ thin_cyl(100, 110, 50);
             viewer.setResult(res);
             highlighter.setResult(res);
             messages.model = res.messagesModel();
-            shapeOutOfDate = !res.hasShape;
+            shapeOutOfDate = !res.hasShapes;
         }
     }
 

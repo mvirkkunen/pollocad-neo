@@ -1,10 +1,12 @@
-#include "executor.h"
+#include <format>
+
+#include "contexts.h"
 
 namespace
 {
 
 Value builtin_if(const CallContext &c) {
-    if (c.count() < 2) {
+    if (c.positional().size() < 2) {
         return c.error("Malformed if clause (too few arguments)");
     }
 
@@ -21,11 +23,11 @@ Value builtin_if(const CallContext &c) {
         return undefined;
     }
 
-    if (c.count() == 2) {
+    if (c.positional().size() == 2) {
         return undefined;
     }
 
-    if (c.count() == 3) {
+    if (c.positional().size() == 3) {
         auto else_ = c.get<Function>(2);
         if (!else_) {
             return c.error("Invalid else block in if clause");
@@ -174,16 +176,16 @@ Value builtin_echo(const CallContext &c) {
 }
 
 void register_builtins_values(Environment &env) {
-    env.add_function("[]", builtin_index);
-    env.add_function("if", builtin_if);
-    env.add_function("-", builtin_minus);
-    env.add_function("+", builtin_bin_op([](auto a, auto b) { return a + b; }));
-    env.add_function("*", builtin_bin_op([](auto a, auto b) { return a * b; }));
-    env.add_function("/", builtin_bin_op([](auto a, auto b) { return a / b; }));
-    env.add_function("%", builtin_bin_op([](auto a, auto b) { return static_cast<int>(a) % static_cast<int>(b); }));
-    env.add_function("list", builtin_list);
-    env.add_function("floor", builtin_floor);
-    env.add_function("type", builtin_type);
-    env.add_function("str", builtin_str);
-    env.add_function("echo", builtin_echo);
+    env.setFunction("[]", builtin_index);
+    env.setFunction("if", builtin_if);
+    env.setFunction("-", builtin_minus);
+    env.setFunction("+", builtin_bin_op([](auto a, auto b) { return a + b; }));
+    env.setFunction("*", builtin_bin_op([](auto a, auto b) { return a * b; }));
+    env.setFunction("/", builtin_bin_op([](auto a, auto b) { return a / b; }));
+    env.setFunction("%", builtin_bin_op([](auto a, auto b) { return static_cast<int>(a) % static_cast<int>(b); }));
+    env.setFunction("list", builtin_list);
+    env.setFunction("floor", builtin_floor);
+    env.setFunction("type", builtin_type);
+    env.setFunction("str", builtin_str);
+    env.setFunction("echo", builtin_echo);
 }

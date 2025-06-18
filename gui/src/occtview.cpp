@@ -27,7 +27,7 @@
 
 class OcctWrapper : public AIS_ViewController {
 public:
-    void setShape(TopoDS_Shape shape);
+    void setResult(BackgroundExecutorResult *result);
     void init();
     void paint(int x, int y, int width, int height, int windowHeight);
     bool hasAnimation() { return m_viewCube->HasAnimation(); }
@@ -40,7 +40,7 @@ private:
     Handle(V3d_Viewer) m_viewer;
     Handle(AIS_InteractiveContext) m_interactiveContext;
     Handle(AIS_ViewCube) m_viewCube;
-    Handle(AIS_Shape) m_shape;
+    std::vector<Handle(AIS_Shape)> m_shapes;
 };
 
 OcctView::OcctView()
@@ -50,9 +50,8 @@ OcctView::OcctView()
     setAcceptedMouseButtons(Qt::AllButtons);
 }
 
-void OcctView::setResult(ExecutorResult *result) {
-    TopoDS_Shape shape = result->shape();
-    window()->scheduleRenderJob(QRunnable::create([shape, this] { if (m_renderer) { m_renderer->setShape(shape); } }), QQuickWindow::BeforeRenderingStage);
+void OcctView::setResult(BackgroundExecutorResult *result) {
+    window()->scheduleRenderJob(QRunnable::create([result, this] { if (m_renderer) { m_renderer->setResult(result); } }), QQuickWindow::BeforeRenderingStage);
     window()->update();
 }
 
@@ -170,8 +169,8 @@ void OcctRenderer::paint() {
     }
 }
 
-void OcctRenderer::setShape(TopoDS_Shape shape) {
-    m_wrapper->setShape(shape);
+void OcctRenderer::setResult(BackgroundExecutorResult* result) {
+    m_wrapper->setResult(result);
 }
 
 void OcctWrapper::init() {
@@ -274,27 +273,43 @@ void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
     m_fbo->UnbindBuffer(glContext);
 }
 
-void OcctWrapper::setShape(TopoDS_Shape shape) {
-    if (shape.IsNull()) {
+void OcctWrapper::setResult(BackgroundExecutorResult *result) {
+    if (!result->shapes()) {
         return;
     }
 
-    bool center = false;
+    bool center = m_shapes.empty();
 
-    if (m_shape) {
-        m_interactiveContext->Remove(m_shape, false);
-    } else {
-        center = true;
+    for (const auto &sh : m_shapes) {
+        m_interactiveContext->Remove(sh, false);
     }
 
-    m_shape = new AIS_Shape(shape);
-    m_shape->Attributes()->SetFaceBoundaryDraw(true);
+    m_shapes.clear();
 
-    Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(Quantity_NOC_BLACK, Aspect_TOL_SOLID, 2.0);
-    m_shape->Attributes()->SetFaceBoundaryAspect(line);
-    m_shape->Attributes()->SetLineAspect(line);
+    for (const auto &sh : *result->shapes()) {
+        auto aisShape = new AIS_Shape(sh.shape);
+        aisShape->Attributes()->SetFaceBoundaryDraw(true);
+        
+        for (const auto &tag : sh.tags) {
+            if (tag.starts_with("color=")) {
+                const auto colorName = tag.substr(6);
 
-    m_interactiveContext->Display(m_shape, AIS_Shaded, -1, false);
+                Quantity_Color color;
+                if (Quantity_Color::ColorFromHex(colorName.c_str(), color)) {
+                    aisShape->SetColor(color);
+                } else if (Quantity_Color::ColorFromName(colorName.c_str(), color)) {
+                    aisShape->SetColor(color);
+                }
+            }
+        }
+
+        Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(Quantity_NOC_BLACK, Aspect_TOL_SOLID, 2.0);
+        aisShape->Attributes()->SetFaceBoundaryAspect(line);
+        //aisShape->Attributes()->SetFaceBoundaryDraw(false);
+        aisShape->Attributes()->SetLineAspect(line);
+
+        m_interactiveContext->Display(aisShape, AIS_Shaded, -1, false);
+    }
 
     if (center) {
         m_view->SetProj(V3d_XnegYnegZpos, false);

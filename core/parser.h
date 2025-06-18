@@ -10,4 +10,4 @@ struct ParseResult {
     std::vector<LogMessage> errors;
 };
 
-ParseResult parse(std::string code);
+ParseResult parse(std::string code, bool enableSpans = true);

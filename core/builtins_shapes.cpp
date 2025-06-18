@@ -1,4 +1,4 @@
-#include "executor.h"
+#include "contexts.h"
 
 #include <BRepBndLib.hxx>
 #include <BRepAlgoAPI_Common.hxx>
@@ -14,7 +14,7 @@ double degToRad(double deg) {
     return deg * (M_PI / 180.0);
 }
 
-TopoDS_Compound toCompound(const TaggedShapes& shapes) {
+TopoDS_Compound toCompound(const ShapeList& shapes) {
     TopoDS_Builder builder;
     TopoDS_Compound comp;
     builder.MakeCompound(comp);
@@ -26,7 +26,7 @@ TopoDS_Compound toCompound(const TaggedShapes& shapes) {
     return comp;
 }
 
-Bnd_Box getBoundingBox(const TaggedShapes& shapes) {
+Bnd_Box getBoundingBox(const ShapeList& shapes) {
     Bnd_Box bbox;
     BRepBndLib::Add(toCompound(shapes), bbox);
     return bbox;
@@ -58,19 +58,20 @@ gp_Vec parseVec(const CallContext &c, double default_) {
     return vec;
 }
 
-Value addShapeChildren(const CallContext &c, TaggedShapes shape) {
+Value addShapeChildren(const CallContext &c, ShapeList shape) {
     auto childrenp = c.get<Function>("$children");
     if (childrenp) {
         auto children = (**childrenp)(c.with("$parent", shape));
-        if (children.error()) {
-            return children;
-        }
+        // TODO FIXME
+        /*if (children.error()) {
+            return undefined;
+        }*/
 
         if (children.undefined()) {
             return shape;
         }
 
-        if (auto childShapes = children.as<TaggedShapes>()) {
+        if (auto childShapes = children.as<ShapeList>()) {
             std::move(childShapes->begin(), childShapes->end(), std::back_inserter(shape));
         } else {
             return c.error("Invalid children for shape");
@@ -85,7 +86,7 @@ Value addShapeChildren(const CallContext &c, TaggedShapes shape) {
 
 Value builtin_box(const CallContext &c) {
     auto size = parseVec(c, 1.0);
-    return addShapeChildren(c, TaggedShapes{BRepPrimAPI_MakeBox{size.X(), size.Y(), size.Z()}.Shape()});
+    return addShapeChildren(c, ShapeList{BRepPrimAPI_MakeBox{size.X(), size.Y(), size.Z()}.Shape()});
 }
 
 Value builtin_cyl(const CallContext &c) {
@@ -100,7 +101,7 @@ Value builtin_cyl(const CallContext &c) {
         return undefined;
     }
 
-    return addShapeChildren(c, TaggedShapes{BRepPrimAPI_MakeCylinder{r, h}.Shape()});
+    return addShapeChildren(c, ShapeList{BRepPrimAPI_MakeCylinder{r, h}.Shape()});
 }
 
 Value builtin_align(const CallContext &c) {
@@ -109,7 +110,7 @@ Value builtin_align(const CallContext &c) {
         return undefined;
     }
 
-    auto parentp = c.get<TaggedShapes>("$parent");
+    auto parentp = c.get<ShapeList>("$parent");
     if (!parentp) {
         std::cerr << "No parent, cannot align";
         return children;
@@ -130,7 +131,7 @@ Value builtin_move(const CallContext &c) {
     gp_Trsf trsf;
     trsf.SetTranslation(parseVec(c, 0.0));
 
-    TaggedShapes result;
+    ShapeList result;
     for (const auto &c : children) {
         result.emplace_back(c.shape.Moved(trsf), c.tags);
     }
@@ -157,7 +158,7 @@ Value builtin_rot(const CallContext &c) {
         trsf.SetRotation(gp_Ax1{{}, {0.0, 0.0, 1.0}}, degToRad(v.Z()));
     }
 
-    TaggedShapes result;
+    ShapeList result;
     for (const auto &c : children) {
         result.emplace_back(c.shape.Moved(trsf), c.tags);
     }
@@ -176,7 +177,7 @@ Value builtin_tag(const CallContext &c) {
         return children;
     }
 
-    TaggedShapes result;
+    ShapeList result;
     for (const auto &c : children) {
         std::unordered_set<std::string> new_tags = c.tags;
         new_tags.insert(*tag);
@@ -221,7 +222,7 @@ Value builtin_combine(const CallContext &c) {
         result = cut.Shape();
     }
 
-    return TaggedShapes{result};
+    return ShapeList{result};
 }
 
 
@@ -234,14 +235,14 @@ Value builtin_repeat(const CallContext &c) {
     const auto cv = c.get<double>(0);
     const int count = cv ? *cv : 0;
 
-    TaggedShapes result;
+    ShapeList result;
     for (int i = 0; i < count; i++) {
         const auto value = (**children)(c.with("$i", static_cast<double>(i)));
 
-        if (auto shapes = value.as<TaggedShapes>()) {
+        if (auto shapes = value.as<ShapeList>()) {
             std::move(shapes->begin(), shapes->end(), std::back_inserter(result));
         } else {
-            return RuntimeError{"repeat only works on shapes"};
+            return c.error("repeat only works on shapes");
         }
     }
 
@@ -249,14 +250,14 @@ Value builtin_repeat(const CallContext &c) {
 }
 
 void register_builtins_shapes(Environment &env) {
-    env.add_function("box", builtin_box);
-    env.add_function("align", builtin_align);
-    env.add_function("cyl", builtin_cyl);
-    env.add_function("move", builtin_move);
-    env.add_function("rot", builtin_rot);
-    env.add_function("tag", builtin_tag);
-    env.add_function("combine", builtin_combine);
-    env.add_function("repeat", builtin_repeat);
+    env.setFunction("box", builtin_box);
+    env.setFunction("align", builtin_align);
+    env.setFunction("cyl", builtin_cyl);
+    env.setFunction("move", builtin_move);
+    env.setFunction("rot", builtin_rot);
+    env.setFunction("tag", builtin_tag);
+    env.setFunction("combine", builtin_combine);
+    env.setFunction("repeat", builtin_repeat);
 }
 
 

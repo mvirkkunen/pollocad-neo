@@ -30,7 +30,7 @@ private slots:
         QFETCH(Value, expected);
 
         Executor executor;
-        auto actual = executor.executeSync(code);
+        auto actual = executor.execute(code.toStdString()).result;
 
         QCOMPARE(actual, expected);
     }

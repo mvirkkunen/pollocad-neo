@@ -42,7 +42,7 @@ struct LiteralExpr {
     //LiteralExpr(const Value& value) : value(std::make_shared<Value>(value)) { }
     //LiteralExpr(double value) : value(std::make_shared<Value>(value)) { }
 
-    bool operator==(const LiteralExpr&) const = default;
+    bool operator==(const LiteralExpr& other) const { return *value == *other.value; }
 };
 
 struct VarExpr {
@@ -80,6 +80,7 @@ struct LambdaExpr {
     ExprList body;
     std::vector<Arg> args;
     std::string name;
+    Span span;
 
     bool operator==(const LambdaExpr&) const = default;
 };
@@ -92,6 +93,7 @@ private:
     Variant v;
 
 public:
+    Expr(const Expr &) = default;
     Expr(Variant v) : v(std::move(v)) { }
     Expr(LiteralExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(VarExpr ex) : Expr(Variant{std::move(ex)}) { }

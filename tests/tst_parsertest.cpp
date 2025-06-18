@@ -49,7 +49,13 @@ private slots:
         QFETCH(QString, code);
         QFETCH(ast::ExprList, expected);
 
-        auto actual = parse(code.toStdString());
+        auto actual = parse(code.toStdString(), false);
+
+        if (!actual.result) {
+            for (const auto &err : actual.errors) {
+                std::cerr << err.message;
+            }
+        }
 
         QCOMPARE(actual.result, expected);
     }

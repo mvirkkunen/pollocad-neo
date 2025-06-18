@@ -4,7 +4,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 
-#include "executor.h"
+#include "backgroundexecutor.h"
 
 class OcctWrapper;
 
@@ -15,7 +15,7 @@ public:
     ~OcctRenderer();
 
     void setParent(QQuickItem *parent) { m_parent = parent; }
-    void setShape(TopoDS_Shape shape);
+    void setResult(BackgroundExecutorResult *result);
     void wheelEvent(int delta);
     void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
 
@@ -37,7 +37,7 @@ class OcctView : public QQuickItem
 public:
     OcctView();
 
-    Q_INVOKABLE void setResult(ExecutorResult *result);
+    Q_INVOKABLE void setResult(BackgroundExecutorResult *result);
 
 protected:
     void mousePressEvent(QMouseEvent *ev) override;

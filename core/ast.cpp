@@ -40,8 +40,6 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                 os << space(indent) << "LetExpr" << ex.span << "{\n";
                 os << space(indent + 1) << ex.name << " = \n";
                 ex.value->dump(os, indent + 1);
-                //os << space(indent + 1) << "in:\n";
-                //ast::dump(os, ex.exprs, indent + 1);
                 os << space(indent) << "}\n";
             } else if constexpr (std::is_same_v<T, CallExpr>) {
                 os << space(indent) << "CallExpr" << ex.span << "{\n";

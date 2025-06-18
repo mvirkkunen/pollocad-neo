@@ -7,7 +7,7 @@
 #include <QSyntaxHighlighter>
 
 #include "parser.h"
-#include "executor.h"
+#include "backgroundexecutor.h"
 
 class SyntaxHighlighter : public QSyntaxHighlighter {
     Q_OBJECT
@@ -31,29 +31,19 @@ public:
 
 protected:
     void highlightBlock(const QString &text) override {
-        //qDebug() << "highlight: " + text;
-
         const int begin = currentBlock().position();
-        const int end = begin + currentBlock().length();
-
-        //qDebug() << "global: " << begin << "-" << end;
-
-        //QTextCharFormat format;
-        //format.setForeground(QColor::fromRgb(255, 255, 0));
-        //setFormat(0, 10, QColor::fromRgb(255, 255, 0));
+        const int end = begin + text.length();
 
         for (const auto &msg : m_messages) {
-            if (msg.level() == LogMessage::Level::Info) {
+            if (msg.level == LogMessage::Level::Info) {
                 continue;
             }
 
-            //qDebug() << "checking: " << msg.span().begin() << "-" << msg.span().end();
+            if (msg.span.begin < end && msg.span.end > begin) {
+                const int localBegin = std::max(0, msg.span.begin - begin);
+                int localEnd = std::min(static_cast<int>(text.length()), msg.span.end - begin);
 
-            if (msg.span().begin() < end && msg.span().end() > begin) {
-                int localBegin = std::max(0, msg.span().begin() - begin);
-                int localEnd = std::min(end, msg.span().end() - begin);
-
-                while (localEnd > localBegin + 1 && text.at(localEnd - 1).isSpace()) {
+                while (localEnd > localBegin + 1 && localEnd >= 1 && text.at(localEnd - 1).isSpace()) {
                     localEnd--;
                 }
 
@@ -61,14 +51,11 @@ protected:
                     localEnd = std::min(end, localEnd + 1);
                 }
 
-                //qDebug() << "found span: " << localBegin << "-" << localEnd << " " << msg.message();
-
                 QTextCharFormat format;
-                //format.setFontUnderline(true);
                 format.setUnderlineStyle(QTextCharFormat::UnderlineStyle::SingleUnderline);
                 //format.setUnderlineStyle(QTextCharFormat::UnderlineStyle::WaveUnderline);
                 format.setUnderlineColor(QColor::fromRgb(255, 0, 0));
-                format.setToolTip(msg.message());
+                format.setToolTip(QString::fromStdString(msg.message));
                 format.setForeground(QColor::fromRgb(255, 0, 0));
                 setFormat(localBegin, localEnd - localBegin, format);
             }
@@ -78,13 +65,10 @@ protected:
     void findBlocks(std::vector<QTextBlock> &blocks) {
         for (const auto &msg : m_messages) {
 
-            auto it = document()->findBlock(msg.span().begin());
-            auto end = document()->findBlock(msg.span().end());
-
-            qDebug() << "finding " << msg.span().begin() << "-" << msg.span().end() << " " << it.length();
+            auto it = document()->findBlock(msg.span.begin);
+            auto end = document()->findBlock(msg.span.end);
 
             do {
-                qDebug() << "found: " << it.position();
                 rehighlightBlock(it);
                 it = it.next();
             } while (it.length() && it != end);
@@ -104,7 +88,7 @@ public:
         m_highlighter = new SyntaxHighlighter(doc->textDocument());
     }
 
-    Q_INVOKABLE void setResult(ExecutorResult *result) {
+    Q_INVOKABLE void setResult(BackgroundExecutorResult *result) {
         m_highlighter->setMessages(result->messages());
     }
 
@@ -120,8 +104,8 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
-    Executor executor;
-    engine.rootContext()->setContextProperty("executor", &executor);
+    BackgroundExecutor executorManager;
+    engine.rootContext()->setContextProperty("executor", &executorManager);
 
     CodeHighlighter highlighter;
     engine.rootContext()->setContextProperty("highlighter", &highlighter);
@@ -132,7 +116,7 @@ int main(int argc, char *argv[])
         &app,
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
-    engine.loadFromModule("pollocad", "Main");
+    engine.loadFromModule("pollocadgui", "Main");
 
     return app.exec();
 }

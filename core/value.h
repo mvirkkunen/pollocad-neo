@@ -15,17 +15,17 @@ struct Undefined
 };
 constexpr const auto undefined = Undefined{};
 
-struct TaggedShape {
+struct Shape {
     TopoDS_Shape shape;
     std::unordered_set<std::string> tags;
 
-    TaggedShape() { }
-    TaggedShape(TopoDS_Shape shape) : shape(shape) { }
-    TaggedShape(TopoDS_Shape shape, std::unordered_set<std::string> tags) : shape(shape), tags(tags) { }
+    Shape() { }
+    Shape(TopoDS_Shape shape) : shape(shape) { }
+    Shape(TopoDS_Shape shape, std::unordered_set<std::string> tags) : shape(shape), tags(tags) { }
 
-    bool operator==(const TaggedShape &) const = default;
+    bool operator==(const Shape &) const = default;
 };
-using TaggedShapes = std::vector<TaggedShape>;
+using ShapeList = std::vector<Shape>;
 
 class CallContext;
 using FunctionImpl = std::function<Value(const CallContext&)>;
@@ -33,40 +33,29 @@ using Function = std::shared_ptr<FunctionImpl>;
 
 using List = std::vector<Value>;
 
-struct RuntimeError {
-    std::string error;
-
-    bool operator==(const RuntimeError &) const = default;
-};
-
 class Value {
 private:
-    using Variant = std::variant<Undefined, double, std::string, TaggedShapes, Function, List, RuntimeError>;
+    using Variant = std::variant<Undefined, double, std::string, ShapeList, Function, List>;
     Variant v;
 
 public:
     Value() : v(::undefined) { }
 
-    template <typename T>
-    constexpr Value(T v) : v(v) { }
-
+    constexpr Value(Undefined) : v(::undefined) { }
+    constexpr Value(double v) : v(v) { }
     constexpr Value(int v) : v(static_cast<double>(v)) { }
+    constexpr Value(const std::string v) : v(v) { }
+    constexpr Value(ShapeList v) : v(v) { }
+    constexpr Value(List v) : v(v) { }
+    Value(Function v) : v(v) { }
 
     template <typename T>
     const T *as() const {
         return std::get_if<T>(&v);
     }
 
-    bool error() const {
-        return std::holds_alternative<RuntimeError>(v);
-    }
-
-    bool undefined() const {
-        return std::holds_alternative<Undefined>(v);
-    }
-
+    bool undefined() const { return std::holds_alternative<Undefined>(v); }
     bool truthy() const;
-
     void display(std::ostream &os) const;
     std::string type() const;
 
