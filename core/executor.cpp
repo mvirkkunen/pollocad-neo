@@ -41,6 +41,7 @@ ExecutorResult Executor::execute(const std::string &code) {
 
     std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(context->messages()));
     if (!parserResult.result) {
+        context->cancel();
         return ExecutorResult{std::nullopt, parserResult.errors};
     }
 
@@ -54,7 +55,6 @@ ExecutorResult Executor::execute(const std::string &code) {
     }
 
     context->cancel();
-
     return ExecutorResult{result, context->messages()};
 }
 
