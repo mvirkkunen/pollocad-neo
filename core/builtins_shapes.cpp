@@ -20,7 +20,7 @@ TopoDS_Compound toCompound(const ShapeList& shapes) {
     builder.MakeCompound(comp);
 
     for (const auto &sh : shapes) {
-        builder.Add(comp, sh.shape);
+        builder.Add(comp, sh.shape());
     }
 
     return comp;
@@ -133,7 +133,7 @@ Value builtin_move(const CallContext &c) {
 
     ShapeList result;
     for (const auto &c : children) {
-        result.emplace_back(c.shape.Moved(trsf), c.tags);
+        result.push_back(c.withShape(c.shape().Moved(trsf)));
     }
 
     return result;
@@ -160,7 +160,7 @@ Value builtin_rot(const CallContext &c) {
 
     ShapeList result;
     for (const auto &c : children) {
-        result.emplace_back(c.shape.Moved(trsf), c.tags);
+        result.push_back(c.withShape(c.shape().Moved(trsf)));
     }
 
     return result;
@@ -172,16 +172,38 @@ Value builtin_tag(const CallContext &c) {
         return undefined;
     }
 
-    auto tag = c.get<std::string>(0);
-    if (!tag) {
+    auto ptag = c.get<std::string>(0);
+    if (!ptag) {
         return children;
     }
 
     ShapeList result;
     for (const auto &c : children) {
-        std::unordered_set<std::string> new_tags = c.tags;
-        new_tags.insert(*tag);
-        result.emplace_back(c.shape, new_tags);
+        result.push_back(c.withProp(*ptag, true));
+    }
+
+    return result;
+}
+
+Value builtin_prop(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto pname = c.get<std::string>(0);
+    if (!pname) {
+        return children;
+    }
+
+    auto pvalue = c.get(1);
+    if (!pvalue) {
+        return children;
+    }
+
+    ShapeList result;
+    for (const auto &c : children) {
+        result.push_back(c.withProp(*pname, *pvalue));
     }
 
     return result;
@@ -193,13 +215,13 @@ Value builtin_combine(const CallContext &c) {
         return undefined;
     }
 
-    auto remove = std::partition(children.begin(), children.end(), [](const auto& s) { return !s.tags.contains("remove"); });
+    auto remove = std::partition(children.begin(), children.end(), [](const auto& s) { return !s.hasProp("remove"); });
     if (remove == children.begin()) {
         return undefined;
     }
 
     auto it = children.cbegin();
-    TopoDS_Shape result = it->shape;
+    TopoDS_Shape result = it->shape();
     it++;
 
     for (; it != remove; it++) {
@@ -207,7 +229,7 @@ Value builtin_combine(const CallContext &c) {
             return undefined;
         }
 
-        BRepAlgoAPI_Fuse fuse{result, it->shape};
+        BRepAlgoAPI_Fuse fuse{result, it->shape()};
         fuse.SimplifyResult();
         result = fuse.Shape();
     }
@@ -217,7 +239,7 @@ Value builtin_combine(const CallContext &c) {
             return undefined;
         }
 
-        BRepAlgoAPI_Cut cut{result, it->shape};
+        BRepAlgoAPI_Cut cut{result, it->shape()};
         cut.SimplifyResult();
         result = cut.Shape();
     }
@@ -256,6 +278,7 @@ void register_builtins_shapes(Environment &env) {
     env.setFunction("move", builtin_move);
     env.setFunction("rot", builtin_rot);
     env.setFunction("tag", builtin_tag);
+    env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("repeat", builtin_repeat);
 }

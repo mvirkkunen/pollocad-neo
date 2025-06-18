@@ -10,7 +10,7 @@ Value builtin_if(const CallContext &c) {
         return c.error("Malformed if clause (too few arguments)");
     }
 
-    if (c.get(0).truthy()) {
+    if (c.get(0)->truthy()) {
         auto then = c.get<Function>(1);
         if (!then) {
             return c.error("Invalid then block in if clause");

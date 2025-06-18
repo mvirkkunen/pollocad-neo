@@ -26,9 +26,13 @@ public:
 
     const std::unordered_map<std::string, Value> &named() const { return m_named; }
 
-    const Value &get(size_t index) const { return m_positional.at(index); }
+    //const Value &get(size_t index) const { return m_positional.at(index); }
 
-    const Value &get(std::string name) const { return m_named.at(name); }
+    //const Value &get(std::string name) const { return m_named.at(name); }
+
+    const Value *get(size_t index) const {
+        return index < m_positional.size() ? &m_positional.at(index) : nullptr;
+    }
 
     template <typename T>
     const T *get(size_t index) const {

@@ -1,5 +1,34 @@
 #include "value.h"
 
+Shape::Shape(TopoDS_Shape shape, Span span) : m_shape(shape), m_spans({span}) { }
+
+Shape::Shape(TopoDS_Shape shape, std::unordered_map<std::string, Value> props, std::vector<Span> spans) : m_shape(shape), m_props(props), m_spans(spans) { }
+
+Shape Shape::withShape(TopoDS_Shape shape, Span span) const {
+    std::vector<Span> newSpans = m_spans;
+    if (!span.isEmpty()) {
+        newSpans.push_back(span);
+    }
+
+    return Shape(shape, m_props, newSpans);
+}
+
+Shape Shape::withProp(const std::string &name, const Value &value) const {
+    std::unordered_map<std::string, Value> newProps = m_props;
+    newProps.emplace(name, value);
+    
+    return Shape(m_shape, newProps, m_spans);
+}
+
+bool Shape::hasProp(const std::string &name) const {
+    return m_props.contains(name);
+}
+
+Value Shape::getProp(const std::string &name) const {
+    auto it = m_props.find(name);
+    return (it == m_props.end()) ? undefined : it->second;
+}
+
 bool Value::truthy() const {
     return std::visit(
         [](const auto &v) {

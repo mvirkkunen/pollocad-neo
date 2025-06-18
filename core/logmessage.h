@@ -13,6 +13,8 @@ struct Span
     int line = -1;
     int column = -1;
 
+    bool isEmpty() const { return begin == -1; }
+
     bool operator==(const Span &) const = default;
 };
 

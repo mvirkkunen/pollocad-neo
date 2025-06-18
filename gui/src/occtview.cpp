@@ -287,19 +287,18 @@ void OcctWrapper::setResult(BackgroundExecutorResult *result) {
     m_shapes.clear();
 
     for (const auto &sh : *result->shapes()) {
-        Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape);
+        Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape());
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
-        
-        for (const auto &tag : sh.tags) {
-            if (tag.starts_with("color=")) {
-                const auto colorName = tag.substr(6);
 
-                Quantity_Color color;
-                if (Quantity_Color::ColorFromHex(colorName.c_str(), color)) {
-                    aisShape->SetColor(color);
-                } else if (Quantity_Color::ColorFromName(colorName.c_str(), color)) {
-                    aisShape->SetColor(color);
-                }
+        auto pcolor = sh.getProp("color").as<std::string>();
+        if (pcolor) {
+            auto colorName = pcolor->c_str();
+
+            Quantity_Color color;
+            if (Quantity_Color::ColorFromHex(colorName, color)) {
+                aisShape->SetColor(color);
+            } else if (Quantity_Color::ColorFromName(colorName, color)) {
+                aisShape->SetColor(color);
             }
         }
 

@@ -4,8 +4,10 @@
 #include <memory>
 #include <variant>
 #include <vector>
-#include <unordered_set>
+#include <unordered_map>
 #include <TopoDS_Shape.hxx>
+
+#include "logmessage.h"
 
 struct Value;
 
@@ -15,15 +17,25 @@ struct Undefined
 };
 constexpr const auto undefined = Undefined{};
 
-struct Shape {
-    TopoDS_Shape shape;
-    std::unordered_set<std::string> tags;
-
+class Shape {
+public:
     Shape() { }
-    Shape(TopoDS_Shape shape) : shape(shape) { }
-    Shape(TopoDS_Shape shape, std::unordered_set<std::string> tags) : shape(shape), tags(tags) { }
+    Shape(TopoDS_Shape shape, Span span={});
+    Shape(TopoDS_Shape shape, std::unordered_map<std::string, Value> props, std::vector<Span> spans);
+
+    Shape withShape(TopoDS_Shape shape, Span span={}) const;
+    Shape withProp(const std::string &name, const Value &value) const;
+
+    const TopoDS_Shape &shape() const { return m_shape; }
+    bool hasProp(const std::string &name) const;
+    Value getProp(const std::string &name) const;
 
     bool operator==(const Shape &) const = default;
+
+private:
+    TopoDS_Shape m_shape;
+    std::unordered_map<std::string, Value> m_props;
+    std::vector<Span> m_spans;
 };
 using ShapeList = std::vector<Shape>;
 
