@@ -130,7 +130,16 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     return undefined;
                 }
 
-                return (**func)(CallContext(*context, positional, named, ex.span));
+                try {
+                    return (**func)(CallContext(*context, positional, named, ex.span));
+                } catch (Standard_Failure &exc) {
+                    auto msg = std::format("Exception during processing: {}: {}", typeid(exc).name(), exc.GetMessageString());
+                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
+                    return undefined;
+                } catch (...) {
+                    context->messages().push_back(LogMessage{LogMessage::Level::Error, "Unknown exception during processing", ex.span});
+                    return undefined;
+                }
             } else if constexpr (std::is_same_v<T, ast::LambdaExpr>) {
                 std::unordered_map<std::string, Value> defaults;
                 for (const auto& arg : ex.args) {
