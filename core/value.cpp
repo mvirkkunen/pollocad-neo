@@ -83,6 +83,12 @@ std::ostream& operator<<(std::ostream& os, const Value& val) {
     return os;
 }
 
+std::string Value::display() const {
+    std::ostringstream ss;
+    display(ss);
+    return ss.str();
+}
+
 void Value::display(std::ostream &os) const {
     std::visit(
         [&os](const auto &v) {

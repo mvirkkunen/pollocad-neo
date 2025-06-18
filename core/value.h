@@ -68,6 +68,7 @@ public:
 
     bool undefined() const { return std::holds_alternative<Undefined>(v); }
     bool truthy() const;
+    std::string display() const;
     void display(std::ostream &os) const;
     std::string type() const;
 

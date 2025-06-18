@@ -1,11 +1,17 @@
+#include <format>
+
 #include "contexts.h"
 
 #include <BRepBndLib.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepFilletAPI_MakeChamfer.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <TopoDS.hxx>
+#include <TopExp_Explorer.hxx>
 
 namespace
 {
@@ -29,6 +35,12 @@ TopoDS_Compound toCompound(const ShapeList& shapes) {
 Bnd_Box getBoundingBox(const ShapeList& shapes) {
     Bnd_Box bbox;
     BRepBndLib::Add(toCompound(shapes), bbox);
+    return bbox;
+}
+
+Bnd_Box getBoundingBox(const TopoDS_Shape& shape) {
+    Bnd_Box bbox;
+    BRepBndLib::Add(shape, bbox);
     return bbox;
 }
 
@@ -247,7 +259,6 @@ Value builtin_combine(const CallContext &c) {
     return ShapeList{result};
 }
 
-
 Value builtin_repeat(const CallContext &c) {
     const auto children = c.get<Function>("$children");
     if (!children) {
@@ -271,6 +282,158 @@ Value builtin_repeat(const CallContext &c) {
     return result;
 }
 
+// fillet(1)
+// fillet(1, "y")
+
+template <typename Algorithm>
+Value builtin_chamfer_filler(const CallContext &c) {
+    struct EdgeFilter {
+        double r;
+        gp_XYZ dir;
+        gp_XYZ bound{0.5, 0.5, 0.5};
+    };
+
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto pr = c.get<double>(1);
+    double r = pr ? std::max(*pr, 0.0) : 1.0;
+
+    std::vector<std::pair<std::string, double>> filterSpecs;
+
+    auto plistOrSpec = c.get(0);
+    if (!plistOrSpec) {
+        return children;
+    }
+
+    std::vector<EdgeFilter> filters;
+
+    if (auto pspec = plistOrSpec->as<std::string>()) {
+        filterSpecs.emplace_back(*pspec, r);
+    } else if (auto plist = plistOrSpec->as<List>()) {
+        for (const auto &spec : *plist) {
+            if (const auto pspec = spec.as<std::string>()) {
+                filterSpecs.emplace_back(*pspec, r);
+            } else if (const auto ppair = spec.as<List>()) {
+                if (ppair->size() == 0 || ppair->size() > 2) {
+                    c.warning(std::format("Invalid edge specification pair: {}", spec.display()));
+                    continue;
+                }
+
+                auto pspec = (*ppair)[0].as<std::string>();
+                if (!pspec) {
+                    c.warning(std::format("Invalid edge specification: {}", (*ppair)[0].display()));
+                    continue;
+                }
+
+                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : &r;
+                if (!pr) {
+                    c.warning(std::format("Invalid radius specification: {}", (*ppair)[1].display()));
+                    continue;
+                }
+
+                filterSpecs.emplace_back(*pspec, *pr);
+            } else {
+                c.warning(std::format("Invalid edge specification: {}", spec.display()));
+            }
+        }
+    } else {
+        c.warning(std::format("Invalid edge specification: {}", plistOrSpec->display()));
+    }
+
+    for (const auto &spec : filterSpecs) {
+        std::istringstream ss(spec.first);
+        std::string specItem;
+        while (ss >> specItem) {
+            EdgeFilter filter{spec.second};
+
+            for (const auto ch : specItem) {
+                switch (ch) {
+                    case 'x': filter.dir.SetX(1.0); break;
+                    case 'y': filter.dir.SetY(1.0); break;
+                    case 'z': filter.dir.SetZ(1.0); break;
+                    case 'r': filter.bound.SetX(1.0); break;
+                    case 'f': filter.bound.SetY(1.0); break;
+                    case 't': filter.bound.SetZ(1.0); break;
+                    case 'l': filter.bound.SetX(0.0); break;
+                    case 'n': filter.bound.SetY(0.0); break;
+                    case 'b': filter.bound.SetZ(0.0); break;
+                    default: c.warning(std::format("Invalid edge specification: {}", spec.first)); goto next;
+                }
+            }
+
+            filters.push_back(filter);
+            next:;
+        }
+    }
+
+    ShapeList result;
+    for (const auto &ch : children) {
+        Algorithm algo(ch.shape());
+        auto shapeBoundingBox = getBoundingBox(ch.shape());
+        bool anyMatch = false;
+
+        for (TopExp_Explorer i(ch.shape(), TopAbs_EDGE); i.More(); i.Next()) {
+            const auto &edge = TopoDS::Edge(i.Current());
+            auto edgeBoundingBox = getBoundingBox(edge);
+            bool match = false;
+
+            for (const auto &f : filters) {
+                if (!f.dir.IsEqual({}, 0.0)) {
+                    auto dir = edgeBoundingBox.CornerMax().XYZ() - edgeBoundingBox.CornerMin().XYZ();
+                    const auto dist = dir.Modulus();
+                    if (dist < gp::Resolution()) {
+                        continue;
+                    }
+
+                    dir /= dist;
+
+                    if (!(dir.IsEqual(f.dir, Precision::Approximation()) || dir.IsEqual(f.dir.Reversed(), Precision::Approximation()))) {
+                        continue;
+                    }
+                }
+
+                if (!f.bound.IsEqual({0.5, 0.5, 0.5}, 0.0)) {
+                    const auto min = shapeBoundingBox.CornerMin().XYZ();
+                    const auto max = shapeBoundingBox.CornerMax().XYZ();
+                    const auto pt = min + (max - min).Multiplied(f.bound);
+                    const auto plane = gp_Pln{gp_Ax3{pt, f.bound - gp_XYZ{0.5, 0.5, 0.5}}};
+
+                    if (!(plane.Contains(edgeBoundingBox.CornerMin(), Precision::Approximation()) && plane.Contains(edgeBoundingBox.CornerMax(), Precision::Approximation()))) {
+                        continue;
+                    }
+                }
+
+                match = true;
+                break;
+            }
+
+            if (match && r > 0.0) {
+                anyMatch = true;
+                algo.Add(r, edge);
+            }
+        }
+
+        if (!anyMatch) {
+            c.warning(std::format("No edges found to process"));
+            return children;
+        }
+
+        algo.Build();
+        if (!algo.IsDone()) {
+            c.error(std::format("Operation failed. Shape is too complex or radius is too large."));
+            result.push_back(ch);
+            continue;
+        }
+
+        result.push_back(ch.withShape(algo.Shape()));
+    }
+
+    return result;
+}
+
 void register_builtins_shapes(Environment &env) {
     env.setFunction("box", builtin_box);
     env.setFunction("align", builtin_align);
@@ -281,6 +444,8 @@ void register_builtins_shapes(Environment &env) {
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("repeat", builtin_repeat);
+    env.setFunction("chamfer", builtin_chamfer_filler<BRepFilletAPI_MakeChamfer>);
+    env.setFunction("fillet", builtin_chamfer_filler<BRepFilletAPI_MakeFillet>);
 }
 
 
