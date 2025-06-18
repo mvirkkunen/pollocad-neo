@@ -287,7 +287,7 @@ void OcctWrapper::setResult(BackgroundExecutorResult *result) {
     m_shapes.clear();
 
     for (const auto &sh : *result->shapes()) {
-        auto aisShape = new AIS_Shape(sh.shape);
+        Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape);
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
         
         for (const auto &tag : sh.tags) {
@@ -309,6 +309,8 @@ void OcctWrapper::setResult(BackgroundExecutorResult *result) {
         aisShape->Attributes()->SetLineAspect(line);
 
         m_interactiveContext->Display(aisShape, AIS_Shaded, -1, false);
+
+        m_shapes.push_back(aisShape);
     }
 
     if (center) {
