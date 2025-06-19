@@ -6,28 +6,7 @@
 
 #include "backgroundexecutor.h"
 
-class OcctWrapper;
-
-class OcctRenderer : public QObject {
-    Q_OBJECT
-
-public:
-    ~OcctRenderer();
-
-    void setParent(QQuickItem *parent) { m_parent = parent; }
-    void setResult(BackgroundExecutorResult *result);
-    void wheelEvent(int delta);
-    void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
-
-public slots:
-    void init();
-    void paint();
-
-private:
-    QSize m_viewportSize;
-    QQuickItem *m_parent = nullptr;
-    OcctWrapper* m_wrapper = nullptr;
-};
+class OcctRenderer;
 
 class OcctView : public QQuickItem
 {

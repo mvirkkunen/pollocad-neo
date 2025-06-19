@@ -25,14 +25,23 @@
 #include <V3d_Viewer.hxx>
 #include <NCollection_DataMap.hxx>
 
-class OcctWrapper : public AIS_ViewController {
+class OcctRenderer : public QObject, public AIS_ViewController {
+    Q_OBJECT
+
 public:
+    ~OcctRenderer() = default;
+
+    void setParent(QQuickItem *parent) { m_parent = parent; }
     void setResult(BackgroundExecutorResult *result);
+    void wheelEvent(int delta);
+    void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
+
+public slots:
     void init();
-    void paint(int x, int y, int width, int height, int windowHeight);
-    bool hasAnimation() { return m_viewCube->HasAnimation(); }
+    void paint();
 
 private:
+    QQuickItem *m_parent = nullptr;
     Handle(OpenGl_GraphicDriver) m_driver;
     Handle(OpenGl_FrameBuffer) m_fbo;
     Handle(Aspect_NeutralWindow) m_window;
@@ -123,17 +132,6 @@ void OcctView::releaseResources()
     m_renderer = nullptr;
 }
 
-OcctRenderer::~OcctRenderer() {
-    delete m_wrapper;
-}
-
-void OcctRenderer::init() {
-    if (!m_wrapper) {
-        m_wrapper = new OcctWrapper;
-        m_wrapper->init();
-    }
-}
-
 void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
     Graphic3d_Vec2i posv{static_cast<int>(pos.x()), static_cast<int>(pos.y())};
@@ -148,32 +146,20 @@ void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::Keyboar
     if (modifiers & Qt::ControlModifier) vkeyflags |= Aspect_VKeyFlags_CTRL;
     if (modifiers & Qt::AltModifier) vkeyflags |= Aspect_VKeyFlags_ALT;
 
-    m_wrapper->UpdateMousePosition(posv, vkeymouse, vkeyflags, false);
-    m_wrapper->UpdateMouseButtons(posv, vkeymouse, vkeyflags, false);
+    UpdateMousePosition(posv, vkeymouse, vkeyflags, false);
+    UpdateMouseButtons(posv, vkeymouse, vkeyflags, false);
 }
 
 void OcctRenderer::wheelEvent(int delta)
 {
-    m_wrapper->UpdateZoom(delta);
+    UpdateZoom(delta);
 }
 
-void OcctRenderer::paint() {
-    auto pos = m_parent->mapToScene({0, 0});
-
-    m_parent->window()->beginExternalCommands();
-    m_wrapper->paint(pos.x(), pos.y(), m_parent->width(), m_parent->height(), m_parent->window()->height());
-    m_parent->window()->endExternalCommands();
-
-    if (m_wrapper->hasAnimation()) {
-        m_parent->window()->update();
+void OcctRenderer::init() {
+    if (m_driver) {
+        return;
     }
-}
 
-void OcctRenderer::setResult(BackgroundExecutorResult* result) {
-    m_wrapper->setResult(result);
-}
-
-void OcctWrapper::init() {
     // N.b. this needs a slightly modified OCCT which does not try to mess with GL stuff it's not supposed to touch
 
     m_driver = new OpenGl_GraphicDriver(nullptr, false);
@@ -244,7 +230,12 @@ void OcctWrapper::init() {
     ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_RightButton, AIS_MouseGesture::AIS_MouseGesture_Pan);
 }
 
-void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
+void OcctRenderer::paint() {
+    auto pos = m_parent->mapToScene({0, 0});
+    int width = m_parent->width(), height = m_parent->height(), windowHeight = m_parent->window()->height();
+
+    m_parent->window()->beginExternalCommands();
+
     width = std::clamp(width, 1, 4096);
     height = std::clamp(height, 1, 4096);
 
@@ -265,15 +256,23 @@ void OcctWrapper::paint(int x, int y, int width, int height, int windowHeight) {
     m_fbo->UnbindBuffer(glContext);
 
     m_fbo->BindReadBuffer(glContext);
+
     glContext->Functions()->glBlitFramebuffer(
         0, 0, width, height,
-        x, windowHeight - y - height, x + width, windowHeight - y,
+        pos.x(), windowHeight - pos.y() - height, pos.x() + width, windowHeight - pos.y(),
         GL_COLOR_BUFFER_BIT,
         GL_NEAREST);
+
     m_fbo->UnbindBuffer(glContext);
+
+    m_parent->window()->endExternalCommands();
+
+    if (m_viewCube->HasAnimation()) {
+        m_parent->window()->update();
+    }
 }
 
-void OcctWrapper::setResult(BackgroundExecutorResult *result) {
+void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     if (!result->shapes()) {
         return;
     }
@@ -321,3 +320,5 @@ void OcctWrapper::setResult(BackgroundExecutorResult *result) {
 
     m_view->Invalidate();
 }
+
+#include "occtview.moc"
