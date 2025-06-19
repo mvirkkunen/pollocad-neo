@@ -26,6 +26,7 @@ target_link_libraries(PollocadGui
     PRIVATE
         PollocadCore
         Qt6::Quick
+        Qt6::QuickControls2
 )
 
 include(GNUInstallDirs)
