@@ -51,12 +51,14 @@ protected:
                     localEnd = std::min(end, localEnd + 1);
                 }
 
+                auto color = (msg.level == LogMessage::Level::Error ? QColor::fromRgb(0xff, 0x00, 0x00) : QColor::fromRgb(0x88, 0x88, 0x00));
+
                 QTextCharFormat format;
                 format.setUnderlineStyle(QTextCharFormat::UnderlineStyle::SingleUnderline);
                 //format.setUnderlineStyle(QTextCharFormat::UnderlineStyle::WaveUnderline);
-                format.setUnderlineColor(QColor::fromRgb(255, 0, 0));
+                format.setUnderlineColor(color);
                 format.setToolTip(QString::fromStdString(msg.message));
-                format.setForeground(QColor::fromRgb(255, 0, 0));
+                format.setForeground(color);
                 setFormat(localBegin, localEnd - localBegin, format);
             }
         }

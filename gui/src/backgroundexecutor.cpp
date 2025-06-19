@@ -1,3 +1,5 @@
+#include <format>
+
 #include "backgroundexecutor.h"
 
 void BackgroundExecutor::execute(QString code) {
@@ -54,8 +56,13 @@ QVariant LogMessageModel::data(const QModelIndex &index, int role) const {
             case LogMessage::Level::Warning: return "warning";
             case LogMessage::Level::Error: default: return "error";
         }
-    case Message:
-        return QString::fromStdString(msg.message);
+    case Message: {
+        if (msg.message.find('|') != std::string::npos) {
+            return QString::fromStdString(msg.message);
+        } else {
+            return QString::fromStdString(std::format("{}:{}: {}", msg.span.line, msg.span.column, msg.message));
+        }
+    }
     case Location:
         return msg.span.begin;
     }
