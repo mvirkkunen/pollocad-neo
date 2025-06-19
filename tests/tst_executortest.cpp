@@ -92,6 +92,14 @@ private slots:
         QTest::newRow("def_one") //
             << "def pollo(a) { a + 1 } pollo(2);"
             << Value{3.0};
+
+        QTest::newRow("if_chain_true")
+            << "if (1) 1"
+            << Value{1.0};
+
+        QTest::newRow("if_chain_false")
+            << "if (0) 1"
+            << Value{undefined};
     }
 };
 

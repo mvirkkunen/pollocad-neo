@@ -5,12 +5,12 @@
 
 namespace ast
 {
-char *toString(const std::optional<ExprList> &exprs) {
+/*char *toString(const std::optional<ExprList> &exprs) {
     return exprs ? toAllocatedString(*exprs) : qstrdup("<parse error>");
-}
+}*/
 
-char *toString(const ExprList &exprs) {
-    return toAllocatedString(exprs);
+char *toString(const BlockExpr &exprs) {
+    return toAllocatedString(Expr(exprs));
 }
 
 char *toString(const Expr &ex) {
@@ -21,7 +21,7 @@ char *toString(const Expr &ex) {
 #define TESTCASE(NAME, ACTUAL, EXPECTED) \
     void test_##NAME() { \
         auto actual = parse(ACTUAL); \
-        ast::ExprList expected EXPECTED; \
+        ast::BlockExpr expected EXPECTED; \
         QCOMPARE(actual, expected); \
     }
 
@@ -47,36 +47,42 @@ private slots:
 
     void testParser() {
         QFETCH(QString, code);
-        QFETCH(ast::ExprList, expected);
+        QFETCH(ast::BlockExpr, expected);
+
+        std::cout << "==== TEST ====\n";
 
         auto actual = parse(code.toStdString(), false);
-
+        
         if (!actual.result) {
+            std::cerr << "   Failing code: " << code.toStdString() << "\n";
+
             for (const auto &err : actual.errors) {
                 std::cerr << err.message;
             }
+
+            QFAIL("parse error");
         }
 
         if (actual.result != expected) {
             std::cerr << "   Failing code: " << code.toStdString() << "\n";
         }
 
-        QCOMPARE(actual.result, expected);
+        QCOMPARE(*actual.result, expected);
     }
 
     void testParser_data() {
         using namespace ast;
 
         QTest::addColumn<QString>("code");
-        QTest::addColumn<ast::ExprList>("expected");
+        QTest::addColumn<ast::BlockExpr>("expected");
 
         QTest::newRow("empty") //
             << ""
-            << ExprList{};
+            << BlockExpr{};
 
         QTest::newRow("simple") //
             << "1 + 2"
-            << ExprList{CallExpr{
+            << BlockExpr{CallExpr{
                    "+",
                    {
                        LiteralExpr{1},
@@ -86,7 +92,7 @@ private slots:
 
         QTest::newRow("two") //
             << "1 + 2; 3 + 4;"
-            << ExprList{
+            << BlockExpr{
                    CallExpr{
                        "+",
                        {
@@ -103,34 +109,39 @@ private slots:
                    }};
 
         QTest::newRow("if_return") //
-            << "if 1 { 2 } else { 3 }"
-            << ExprList{CallExpr{
-                   "if", {LiteralExpr{1}, LambdaExpr{{LiteralExpr(2)}}, LambdaExpr{{LiteralExpr(3)}}}}};
+            << "if (1) { 2 } else { 3 }"
+            << BlockExpr{CallExpr{
+                   "if",
+                    {
+                        LiteralExpr{1},
+                        LambdaExpr{Expr{BlockExpr{Expr{{LiteralExpr(2)}}}}},
+                        LambdaExpr{Expr{BlockExpr{Expr{{LiteralExpr(3)}}}}}
+                    }}};
 
         QTest::newRow("if_and") //
-            << "if 1 { 2; } 3;"
-            << ExprList{
-                   CallExpr{
-                       "if",
-                       {
-                           LiteralExpr{1},
-                           LambdaExpr{{LiteralExpr(2)}},
-                       },
-                   },
-                   LiteralExpr{3},
-               };
+            << "if (1) { 2; } 3;"
+            << BlockExpr{
+                CallExpr{
+                    "if",
+                    {
+                        LiteralExpr{1},
+                        LambdaExpr{Expr{BlockExpr{Expr{LiteralExpr(2)}}}},
+                    },
+                },
+                LiteralExpr{3}
+            };
 
         QTest::newRow("if_else") //
-            << "(if 1 { 2; } else { 3; }) + 4;"
-            << ExprList{CallExpr{
+            << "(if (1) { 2; } else { 3; }) + 4;"
+            << BlockExpr{CallExpr{
                    "+",
                    {
                        CallExpr{
                            "if",
                            {
                                LiteralExpr{1},
-                               LambdaExpr{{LiteralExpr(2)}},
-                               LambdaExpr{{LiteralExpr(3)}},
+                               LambdaExpr{Expr{BlockExpr{Expr{LiteralExpr(2)}}}},
+                               LambdaExpr{Expr{BlockExpr{Expr{LiteralExpr(3)}}}},
                            },
                        },
                        LiteralExpr{4},
@@ -138,7 +149,7 @@ private slots:
 
         QTest::newRow("var") //
             << "1 + pollo;"
-            << ExprList{CallExpr{
+            << BlockExpr{CallExpr{
                    "+",
                    {
                        LiteralExpr{1},
@@ -147,89 +158,99 @@ private slots:
 
         QTest::newRow("assign") //
             << "pollo = 2; perro + 1;"
-            << ExprList{
+            << BlockExpr{
                    LetExpr{"pollo", Expr{LiteralExpr{2}}},
                    CallExpr{"+", {VarExpr{"perro"}, LiteralExpr{1}}}};
 
         /*QTest::newRow("return") //
             << "pollo + 1"
-            << ExprList{{CallExpr{"+", {VarExpr{"pollo"}, LiteralExpr{1}}}}};*/
+            << BlockExpr{{CallExpr{"+", {VarExpr{"pollo"}, LiteralExpr{1}}}}};*/
 
         QTest::newRow("call_func") //
             << "pollo();"
-            << ExprList{CallExpr{"pollo"}};
+            << BlockExpr{CallExpr{"pollo"}};
 
         QTest::newRow("call_func_one") //
             << "pollo(1);"
-            << ExprList{CallExpr{"pollo", {LiteralExpr{1}}}};
+            << BlockExpr{CallExpr{"pollo", {LiteralExpr{1}}}};
 
         QTest::newRow("call_func_two") //
             << "pollo(1, 2);"
-            << ExprList{CallExpr{"pollo", {LiteralExpr{1}, {LiteralExpr{2}}}}};
+            << BlockExpr{CallExpr{"pollo", {LiteralExpr{1}, {LiteralExpr{2}}}}};
 
         QTest::newRow("call_func_named") //
             << "pollo(a=1);"
-            << ExprList{CallExpr{"pollo", {}, {{"a", Expr{LiteralExpr{1}}}}}};
+            << BlockExpr{CallExpr{"pollo", {}, {{"a", Expr{LiteralExpr{1}}}}}};
 
         QTest::newRow("call_func_mixed") //
             << "pollo(2, a=1);"
-            << ExprList{CallExpr{"pollo", {LiteralExpr{2}}, {{"a", Expr{LiteralExpr{1}}}}}};
+            << BlockExpr{CallExpr{"pollo", {LiteralExpr{2}}, {{"a", Expr{LiteralExpr{1}}}}}};
 
         QTest::newRow("call_func_block") //
             << "pollo() { 1; }"
-            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{{LiteralExpr{1}}}}}}}};
+            << BlockExpr{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{Expr{BlockExpr{Expr{LiteralExpr{1}}}}}}}}}};
 
         QTest::newRow("call_func_block_func") //
             << "pollo() { perro(); }"
-            << ExprList{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{{CallExpr{"perro"}}}}}}}};
+            << BlockExpr{CallExpr{"pollo", {}, {{"$children", Expr{LambdaExpr{Expr{BlockExpr{Expr{CallExpr{"perro"}}}}}}}}}};
 
         QTest::newRow("call_func_nested_children_block") //
             << "pollo() perro() { 1; }"
-            << ExprList{CallExpr{
+            << BlockExpr{CallExpr{
                    "pollo",
                    {},
                    {{"$children",
-                     Expr{LambdaExpr{ExprList{CallExpr{
-                         "perro", {}, {{"$children", Expr{LambdaExpr{{LiteralExpr{1}}}}}}}}}}}}}};
+                     Expr{LambdaExpr{Expr{CallExpr{
+                         "perro", {}, {{"$children", Expr{LambdaExpr{Expr{BlockExpr{Expr{LiteralExpr{1}}}}}}}}}}}}}}}};
 
         QTest::newRow("call_func_nested_children_no_block") //
             << "pollo() perro();"
-            << ExprList{CallExpr{
+            << BlockExpr{CallExpr{
                    "pollo",
                    {},
-                   {{"$children", Expr{LambdaExpr{ExprList{CallExpr{"perro", {}, {}}}}}}}}};
+                   {{"$children", Expr{LambdaExpr{Expr{CallExpr{"perro", {}, {}}}}}}}}};
 
         QTest::newRow("call_two_func") //
             << "pollo(); perro();"
-            << ExprList{CallExpr{"pollo"}, CallExpr{"perro"}};
+            << BlockExpr{Expr{CallExpr{"pollo"}}, Expr{CallExpr{"perro"}}};
 
-        /*std::cerr << *parse(R"(
-move([10, 0, 0]) {
-    box([50,10,10]);
-    box([100, 100, 1]);
-}
+        QTest::newRow("for_no_step") //
+            << "for (x = [0 : 2]) 3;"
+            << BlockExpr{Expr{
+                CallExpr{"for", {LiteralExpr{"x"}, LiteralExpr{0.0}, LiteralExpr{1.0}, LiteralExpr{2.0}}, {{"$children", Expr{LambdaExpr{Expr{LiteralExpr{3}}}}}}}}};
+    }
 
+    void testParserSuccessOnly() {
+        QFETCH(QString, code);
 
-move([0, 0, 50]) {
-    repeat(25) move([25 * floor($i / 10), 25 * ($i % 10)]) cyl(r=10, h=50);
-}
+        auto actual = parse(code.toStdString(), false);
+        
+        if (!actual.result) {
+            std::cerr << "   Failing code: " << code.toStdString() << "\n";
 
-def thin_cyl(x, y, height) {
-    move([x, y]) cyl(r=1, h=height);
-}
+            for (const auto &err : actual.errors) {
+                std::cerr << err.message;
+            }
 
-thin_cyl(100, 100, 100);
-thin_cyl(100, 110, 50);
+            QFAIL("parse error");
+        }
+    }
 
-)") << "\n";*/
+    void testParserSuccessOnly_data() {
+        using namespace ast;
+
+        QTest::addColumn<QString>("code");
+
+        QTest::newRow("function_and_function") << "pollo() 1;";
+        QTest::newRow("function_and_function_in_block_in_expr") << "({pollo() 1;})";
+        QTest::newRow("function_and_number") << "pollo() perro();";
+        QTest::newRow("if_as_first") << "if (1) pollo();";
+        QTest::newRow("if_else_no_brace") << "if (1) 1; else 2;";
+        QTest::newRow("if_else_else_if") << "if (1) 1; else if (2) 3; else 4;";
+        QTest::newRow("if_else_with_brace") << "if (1) { 1; } else { 2; }";
+        QTest::newRow("if_else_with_brace_in_expr") << "pollo(if (1) { 1; } else { 2; })";
     }
 };
-
-//void ParserTest::initTestCase() {}
-
-//void ParserTest::cleanupTestCase() {}
-
-
 
 QTEST_APPLESS_MAIN(ParserTest)
 

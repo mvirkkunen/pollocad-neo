@@ -6,7 +6,7 @@
 #include "logmessage.h"
 
 struct ParseResult {
-    std::optional<ast::ExprList> result;
+    std::optional<ast::Expr> result;
     std::vector<LogMessage> errors;
 };
 

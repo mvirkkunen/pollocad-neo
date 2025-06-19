@@ -16,8 +16,6 @@ namespace ast {
 
 struct Expr;
 
-using ExprList = std::vector<Expr>;
-
 class ExprPtr {
 public:
     ExprPtr(const ExprPtr& other) : m_expr(other.m_expr) { }
@@ -32,6 +30,17 @@ public:
 
 private:
     std::shared_ptr<Expr> m_expr;
+};
+
+struct BlockExpr {
+    std::vector<Expr> exprs;
+    Span span;
+
+    BlockExpr() { }
+    BlockExpr(std::vector<Expr> exprs) : exprs(exprs) { }
+    BlockExpr(std::initializer_list<Expr> exprs) : exprs(exprs) { }
+
+    bool operator==(const BlockExpr&) const = default;
 };
 
 struct LiteralExpr {
@@ -77,7 +86,7 @@ struct LambdaExpr {
         bool operator==(const Arg&) const = default;
     };
 
-    ExprList body;
+    ExprPtr body;
     std::vector<Arg> args;
     std::string name;
     Span span;
@@ -87,7 +96,7 @@ struct LambdaExpr {
 
 struct Expr {
 public:
-    using Variant = std::variant<LiteralExpr, VarExpr, LetExpr, CallExpr, LambdaExpr>;
+    using Variant = std::variant<BlockExpr, LiteralExpr, VarExpr, LetExpr, CallExpr, LambdaExpr>;
 
 private:
     Variant v;
@@ -95,19 +104,19 @@ private:
 public:
     Expr(const Expr &) = default;
     Expr(Variant v) : v(std::move(v)) { }
+    Expr(BlockExpr v) : v(Variant{std::move(v)}) { }
     Expr(LiteralExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(VarExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(LetExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(CallExpr ex) : Expr(Variant{std::move(ex)}) { }
     Expr(LambdaExpr ex) : Expr(Variant{std::move(ex)}) { }
 
-    const Variant &inner() const { return v; }
+    Variant &inner() { return v; }
+    const Variant &cinner() const { return v; }
     void dump(std::ostream &os, int indent) const;
 
     friend std::ostream& operator<<(std::ostream &os, const Expr &expr);
     bool operator==(const Expr&) const = default;
 };
-
-std::ostream& operator<<(std::ostream &os, const ExprList &list);
 
 } // namespace ast

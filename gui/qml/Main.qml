@@ -43,8 +43,14 @@ ApplicationWindow {
 
             text: `
 combine() {
-  fillet("z", 5) box([50, 50, 10]);
-  tag("remove") tag("highlight") move([25, 25, -5]) cyl(r=5, h=20);
+  fillet("z", 5) move([-25, -25]) box([50, 50, 2]);
+  tag("remove") # {
+    cyl(r=5, h=4);
+
+    for (a = [45 : 90 : 315]) {
+      rot(z=a) move(x=22) cyl(r=3, h=2);
+    }
+  }
 }
 `.trim()
 

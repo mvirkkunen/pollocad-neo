@@ -268,24 +268,81 @@ Value builtin_combine(const CallContext &c) {
     return result;
 }
 
-Value builtin_repeat(const CallContext &c) {
+Value builtin_for(const CallContext &c) {
     const auto children = c.get<Function>("$children");
     if (!children) {
         return undefined;
     }
 
-    const auto cv = c.get<double>(0);
-    const int count = cv ? *cv : 0;
-
     ShapeList result;
-    for (int i = 0; i < count; i++) {
-        const auto value = (**children)(c.with("$i", static_cast<double>(i)));
+    const auto iteration = [&](const Value &item) {
+        const auto value = (**children)(c.with(item));
 
-        if (auto shapes = value.as<ShapeList>()) {
+        if (value.undefined()) {
+            // ignore
+        } else if (auto shapes = value.as<ShapeList>()) {
             std::move(shapes->begin(), shapes->end(), std::back_inserter(result));
         } else {
-            return c.error("repeat only works on shapes");
+            c.error("for children must be shapes");
+            return false;
         }
+
+        return true;
+    };
+
+    if (c.positional().size() == 1) {
+        const auto plist = c.get<List>(0);
+        if (!plist) {
+            return c.error("attempted to for loop over something that is not a list");
+        }
+
+        for (const auto &item: *plist) {
+            if (c.canceled()) {
+                return undefined;
+            }
+
+            if (!iteration(item)) {
+                return undefined;
+            }
+        }
+    } else if (c.positional().size() <= 3) {
+        const auto pfrom = c.get<double>(0);
+        if (!pfrom) {
+            return c.error("for loop start value must be a number");
+        }
+
+        const auto pto = c.get<double>(c.positional().size() - 1);
+        if (!pto) {
+            return c.error("for loop to value must be a number");
+        }
+
+        constexpr double defaultStep = 1.0;
+        const auto pstep = c.positional().size() == 3 ? c.get<double>(1) : &defaultStep;
+        if (!pstep) {
+            return c.error("for loop step value must be a number");
+        }
+
+        double from = *pfrom, step = *pstep, to = *pto;
+
+        if (step == 0.0) {
+            return c.error("for loop step value cannot be zero");
+        }
+
+        if (*pto < *pfrom && step > 0) {
+            step = -step;
+        }
+
+        for (double i = from; i <= to; i += step) {
+            if (c.canceled()) {
+                return undefined;
+            }
+
+            if (!iteration(i)) {
+                return undefined;
+            }
+        }
+    } else {
+        return c.error("malformed for loop (too many arguments)");
     }
 
     return result;
@@ -451,7 +508,7 @@ void register_builtins_shapes(Environment &env) {
     env.setFunction("tag", builtin_tag);
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
-    env.setFunction("repeat", builtin_repeat);
+    env.setFunction("for", builtin_for);
     env.setFunction("chamfer", builtin_chamfer_filler<BRepFilletAPI_MakeChamfer>);
     env.setFunction("fillet", builtin_chamfer_filler<BRepFilletAPI_MakeFillet>);
 }

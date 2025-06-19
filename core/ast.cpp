@@ -22,17 +22,17 @@ bool ExprPtr::operator==(const ExprPtr& other) const {
         || (m_expr && other.m_expr && *m_expr == *other.m_expr);
 }
 
-void dump(std::ostream &os, const ExprList &expr, int indent) {
-    for (const auto &ch : expr) {
-        ch.dump(os, indent);
-    }
-}
-
 void Expr::dump(std::ostream &os, int indent = 0) const {
     std::visit(
         [&os, indent](auto &&ex) {
             using T = std::decay_t<decltype(ex)>;
-            if constexpr (std::is_same_v<T, LiteralExpr>) {
+            if constexpr (std::is_same_v<T, BlockExpr>) {
+                os << space(indent) << "BlockExpr" << ex.span << "{\n";
+                for (const auto &ch : ex.exprs) {
+                   ch.dump(os, indent + 1);
+                }
+                os << space(indent) << "}\n";
+            } else if constexpr (std::is_same_v<T, LiteralExpr>) {
                 os << space(indent) << "LiteralExpr{" << *ex.value << "}\n";
             } else if constexpr (std::is_same_v<T, VarExpr>) {
                 os << space(indent) << "VarExpr" << ex.span << "{" << ex.name << "}\n";
@@ -54,7 +54,13 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                 os << space(indent) << "}" << "\n";
             } else if constexpr (std::is_same_v<T, LambdaExpr>) {
                 // TODO
-                os << space(indent) << "LambdaExpr(\n";
+                os << space(indent) << "LambdaExpr ";
+
+                if (!ex.name.empty()) {
+                    os << ex.name << " ";
+                }
+                
+                os << ex.span << "{\n";
 
                 for (const auto &arg : ex.args) {
                     os << space(indent + 1) << arg.name;
@@ -67,7 +73,7 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                     os << "\n";
                 }
 
-                ast::dump(os, ex.body, indent + 1);
+                ex.body->dump(os, indent + 1);
                 os << space(indent) << "}\n";
             } else {
                 static_assert(false, "non-exhaustive visitor!");
@@ -78,11 +84,6 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
 
 std::ostream& operator<<(std::ostream &os, const Expr &expr) {
     expr.dump(os, 0);
-    return os;
-}
-
-std::ostream& operator<<(std::ostream &os, const ExprList &list) {
-    dump(os, list, 0);
     return os;
 }
 

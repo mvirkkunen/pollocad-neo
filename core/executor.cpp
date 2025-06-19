@@ -17,7 +17,6 @@ namespace
 {
 
 Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::Expr* expr);
-Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::ExprList* exprs, const Span& span);
 
 }
 
@@ -47,9 +46,7 @@ ExecutorResult Executor::execute(const std::string &code) {
 
     auto env = std::make_shared<Environment>(m_defaultEnvironment);
 
-    auto span = Span{0, static_cast<int>(code.size()), 1, 1};
-
-    std::optional<Value> result = eval(context, env, &*parserResult.result, span);
+    std::optional<Value> result = eval(context, env, &*parserResult.result);
     if (context->isCanceled()) {
         result = std::nullopt;
     }
@@ -84,7 +81,34 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
     return std::visit<Value>(
         [env, context](const auto &ex) -> Value {
             using T = std::decay_t<decltype(ex)>;
-            if constexpr (std::is_same_v<T, ast::LiteralExpr>) {
+            if constexpr (std::is_same_v<T, ast::BlockExpr>) {
+                Value result = undefined;
+                ShapeList shapes;
+
+                for (const auto& expr : ex.exprs) {
+                    if (context->isCanceled()) {
+                        return undefined;
+                    }
+
+                    Value val = eval(context, env, &expr);
+                    if (auto resultShapes = val.as<ShapeList>()) {
+                        std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
+                    } else {
+                        if (!shapes.empty() && !val.undefined()) {
+                            context->messages().push_back(LogMessage{LogMessage::Level::Error, "Cannot return both shapes and a value", ex.span});
+                            return undefined;
+                        }
+
+                        result = val;
+                    }
+                }
+
+                if (shapes.empty()) {
+                    return result;
+                }
+
+                return shapes;
+            } else if constexpr (std::is_same_v<T, ast::LiteralExpr>) {
                 return *ex.value;
             } else if constexpr (std::is_same_v<T, ast::VarExpr>) {
                 Value val;
@@ -213,42 +237,13 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                         }
                     }
 
-                    return eval(context, newEnv, &ex.body, ex.span);
+                    return eval(context, newEnv, &*ex.body);
                 });
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
         },
-        expr->inner());
-}
-
-Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::ExprList *exprs, const Span &span) {
-    Value result = undefined;
-    ShapeList shapes;
-
-    for (const auto& expr : *exprs) {
-        if (context->isCanceled()) {
-            return undefined;
-        }
-
-        auto val = eval(context, env, &expr);
-        if (auto resultShapes = val.as<ShapeList>()) {
-            std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
-        } else {
-            if (!shapes.empty() && !val.undefined()) {
-                context->messages().push_back(LogMessage{LogMessage::Level::Error, "Cannot return both shapes and a value", span});
-                return undefined;
-            }
-
-            result = val;
-        }
-    }
-
-    if (shapes.empty()) {
-        return result;
-    }
-
-    return shapes;
+        expr->cinner());
 }
 
 }

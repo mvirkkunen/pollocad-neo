@@ -6,37 +6,29 @@ namespace
 {
 
 Value builtin_if(const CallContext &c) {
-    if (c.positional().size() < 2) {
-        return c.error("Malformed if clause (too few arguments)");
+    auto pcond = c.get(0);
+    if (!pcond) {
+        return c.error("Malformed if clause (no condition)");
     }
 
-    if (c.get(0)->truthy()) {
-        auto then = c.get<Function>(1);
-        if (!then) {
-            return c.error("Invalid then block in if clause");
-        }
-
-        return (**then)(c.empty());
+    auto pthen = c.get<Function>(1);
+    if (!pthen) {
+        pthen = c.get<Function>("$children");
     }
 
-    if (c.canceled()) {
+    if (!pthen) {
+        return c.error("Malformed if clause (no then expression)");
+    }
+
+    auto pelse = c.get<Function>(2);
+
+    if (pcond->truthy()) {
+        return (**pthen)(c.empty());
+    } else if (pelse) {
+        return (**pelse)(c.empty());
+    } else {
         return undefined;
     }
-
-    if (c.positional().size() == 2) {
-        return undefined;
-    }
-
-    if (c.positional().size() == 3) {
-        auto else_ = c.get<Function>(2);
-        if (!else_) {
-            return c.error("Invalid else block in if clause");
-        }
-
-        return (**else_)(c.empty());
-    }
-
-    return c.error("Malformed if clause (too many arguments)");
 }
 
 Value builtin_minus(const CallContext &c) {

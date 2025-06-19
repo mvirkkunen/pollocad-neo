@@ -34,15 +34,21 @@ public:
         return index < m_positional.size() ? &m_positional.at(index) : nullptr;
     }
 
-    template <typename T>
-    const T *get(size_t index) const {
-        return index < m_positional.size() ? m_positional.at(index).as<T>() : nullptr;
+    const Value *get(const std::string &name) const {
+        auto it = m_named.find(name);
+        return it != m_named.end() ? &it->second : nullptr;
     }
 
     template <typename T>
-    const T *get(std::string name) const {
-        auto it = m_named.find(name);
-        return it != m_named.end() ? it->second.as<T>() : nullptr;
+    const T *get(size_t index) const {
+        auto v = get(index);
+        return v ? v->as<T>() : nullptr;
+    }
+
+    template <typename T>
+    const T *get(const std::string &name) const {
+        auto v = get(name);
+        return v ? v->as<T>() : nullptr;
     }
 
     const ShapeList children() const;
@@ -62,6 +68,10 @@ public:
 
     CallContext empty() const {
         return CallContext{m_execContext, {}, {}, m_span};
+    }
+
+    CallContext with(Value value) const {
+        return CallContext{m_execContext, {std::move(value)}, {}, m_span};
     }
 
     CallContext with(const std::string &name, Value value) const {
