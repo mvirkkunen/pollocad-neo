@@ -57,6 +57,10 @@ private slots:
             }
         }
 
+        if (actual.result != expected) {
+            std::cerr << "   Failing code: " << code.toStdString() << "\n";
+        }
+
         QCOMPARE(actual.result, expected);
     }
 
@@ -71,7 +75,7 @@ private slots:
             << ExprList{};
 
         QTest::newRow("simple") //
-            << "1 + 2;"
+            << "1 + 2"
             << ExprList{CallExpr{
                    "+",
                    {
