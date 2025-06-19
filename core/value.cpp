@@ -2,6 +2,8 @@
 
 Shape::Shape(TopoDS_Shape shape, Span span) : m_shape(shape), m_spans({span}) { }
 
+Shape::Shape(TopoDS_Shape shape, std::vector<Span> spans) : m_shape(shape), m_spans(spans) { }
+
 Shape::Shape(TopoDS_Shape shape, std::unordered_map<std::string, Value> props, std::vector<Span> spans) : m_shape(shape), m_props(props), m_spans(spans) { }
 
 Shape Shape::withShape(TopoDS_Shape shape, Span span) const {

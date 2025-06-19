@@ -19,11 +19,13 @@ public:
     OcctView();
 
     Q_INVOKABLE void setResult(BackgroundExecutorResult *result);
+    Q_INVOKABLE void setHoveredPosition(int position);
     bool showHighlightedShapes() const;
     void setShowHighlightedShapes(bool show);
 
 signals:
     void showHighlightedShapesChanged();
+    void spanHovered(int spanBegin, int spanEnd, bool hovered);
 
 protected:
     void mousePressEvent(QMouseEvent *ev) override;

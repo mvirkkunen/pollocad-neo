@@ -78,6 +78,8 @@ public:
         return CallContext{m_execContext, {}, {{name, std::move(value)}}, m_span};
     }
 
+    const Span& span() const { return m_span; }
+
 private:
     ExecutionContext& m_execContext;
     std::vector<Value> m_positional;

@@ -22,9 +22,23 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <StdSelect_BRepOwner.hxx>
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
+
+class ShapeOwner : public Standard_Transient {
+    DEFINE_STANDARD_RTTI_INLINE(ShapeOwner, Standard_Transient)
+
+public:
+    ShapeOwner() { }
+    virtual ~ShapeOwner() { }
+
+    bool isHighlight = false;
+    bool isHovered = false;
+    bool willUnhover = false;
+    std::vector<Span> spans;
+};
 
 class OcctRenderer : public QObject, public AIS_ViewController {
     Q_OBJECT
@@ -34,6 +48,7 @@ public:
 
     void setParent(QQuickItem *parent) { m_parent = parent; }
     void setResult(BackgroundExecutorResult *result);
+    void setHoveredPosition(int position);
     void updateView();
 
     bool showHighlightedShapes() const { return m_showHighlightedShapes; }
@@ -41,6 +56,9 @@ public:
 
     void wheelEvent(int delta);
     void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
+
+signals:
+    void spanHovered(int spanBegin, int spanEnd, bool hovered);
 
 public slots:
     void init();
@@ -67,7 +85,11 @@ OcctView::OcctView()
 }
 
 void OcctView::setResult(BackgroundExecutorResult *result) {
-    scheduleRenderJob([result, this] { if (m_renderer) { m_renderer->setResult(result); } });
+    scheduleRenderJob([this, result] { if (m_renderer) { m_renderer->setResult(result); } });
+}
+
+void OcctView::setHoveredPosition(int position) {
+    scheduleRenderJob([this, position] { if (m_renderer) { m_renderer->setHoveredPosition(position); } });
 }
 
 bool OcctView::showHighlightedShapes() const {
@@ -130,6 +152,9 @@ void OcctView::sync() {
         m_renderer = new OcctRenderer();
         connect(window(), &QQuickWindow::beforeRendering, m_renderer, &OcctRenderer::init, Qt::DirectConnection);
         connect(window(), &QQuickWindow::beforeRenderPassRecording, m_renderer, &OcctRenderer::paint, Qt::DirectConnection);
+        connect(m_renderer, &OcctRenderer::spanHovered, this, [this](int begin, int end, bool hovered) {
+            emit spanHovered(begin, end, hovered);
+        });
     }
 
     m_renderer->setParent(this);
@@ -168,6 +193,42 @@ void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::Keyboar
 
     UpdateMousePosition(posv, vkeymouse, vkeyflags, false);
     UpdateMouseButtons(posv, vkeymouse, vkeyflags, false);
+
+    //m_interactiveContext->MoveTo(posv.x(), posv.y(), m_view, false);
+    //std::cerr << "detected: "  <<m_interactiveContext->HasDetectedShape() << "\n";
+    //m_interactiveContext->SelectDetected();
+
+    for (const auto &sh : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
+        owner->willUnhover = owner->isHovered;
+    }
+
+    for (m_interactiveContext->InitDetected(); m_interactiveContext->MoreDetected(); m_interactiveContext->NextDetected()) {
+        if (auto aisObject = Handle(AIS_InteractiveObject)::DownCast(m_interactiveContext->DetectedCurrentOwner()->Selectable())) {
+            if (auto owner = Handle(ShapeOwner)::DownCast(aisObject->GetOwner())) {
+                owner->willUnhover = false;
+
+                if (!owner->isHovered) {
+                    owner->isHovered = true;
+
+                    for (const auto &span : owner->spans) {
+                        emit spanHovered(span.begin, span.end, true);
+                    }
+                }
+            }
+        }
+    }
+
+    for (const auto &sh : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
+        if (owner->willUnhover) {
+            owner->isHovered = false;
+
+            for (const auto &span : owner->spans) {
+                emit spanHovered(span.begin, span.end, false);
+            }
+        }
+    }
 }
 
 void OcctRenderer::wheelEvent(int delta)
@@ -248,6 +309,10 @@ void OcctRenderer::init() {
     ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_LeftButton, AIS_MouseGesture::AIS_MouseGesture_RotateOrbit);
     ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_MiddleButton, AIS_MouseGesture::AIS_MouseGesture_RotateView);
     ChangeMouseGestureMap().Bind(Aspect_VKeyMouse_RightButton, AIS_MouseGesture::AIS_MouseGesture_Pan);
+
+    //Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(Quantity_NOC_WHITE, Aspect_TOL_SOLID, 2.0);
+    m_interactiveContext->HighlightStyle()->SetColor(Quantity_NOC_WHITE);
+    //m_interactiveContext->HighlightStyle()->SetLineAspect(line);
 }
 
 void OcctRenderer::paint() {
@@ -292,16 +357,6 @@ void OcctRenderer::paint() {
     }
 }
 
-class ShapeOwner : public Standard_Transient {
-    DEFINE_STANDARD_RTTI_INLINE(ShapeOwner, Standard_Transient)
-
-public:
-    ShapeOwner() { }
-    virtual ~ShapeOwner() { }
-
-    bool isHighlight = false;
-};
-
 void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     if (!result->shapes()) {
         return;
@@ -310,6 +365,14 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     bool center = m_shapes.empty();
 
     for (const auto &sh : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
+
+        if (owner->isHovered) {
+            for (const auto &span : owner->spans) {
+                emit spanHovered(span.begin, span.end, false);
+            }
+        }
+        
         m_interactiveContext->Remove(sh, false);
     }
 
@@ -317,6 +380,7 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
 
     for (const auto &sh : *result->shapes()) {
         Handle(ShapeOwner) owner = new ShapeOwner();
+        owner->spans = sh.spans();
 
         Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape());
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
@@ -355,6 +419,40 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     }
 }
 
+void OcctRenderer::setHoveredPosition(int position) {
+    for (const auto &aisShape : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(aisShape->GetOwner());
+
+        bool match = false;
+        for (const auto &span : owner->spans) {
+            if (span.begin <= position && position < span.end) {
+                match = true;
+                break;
+            }
+        }
+
+        if (match != owner->isHovered) {
+            owner->isHovered = match;
+
+            for (const auto &span : owner->spans) {
+                emit spanHovered(span.begin, span.end, owner->isHovered);
+            }
+
+            if (m_showHighlightedShapes || !owner->isHighlight) {
+                Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(owner->isHovered ? Quantity_NOC_WHITE : Quantity_NOC_BLACK, Aspect_TOL_SOLID, 2.0);
+                aisShape->Attributes()->SetFaceBoundaryAspect(line);
+                aisShape->Attributes()->SetLineAspect(line);
+                aisShape->Attributes()->SetColor(owner->isHovered ? Quantity_NOC_WHITE : Quantity_NOC_BLACK);
+
+                m_interactiveContext->Remove(aisShape, false);
+                m_interactiveContext->Display(aisShape, AIS_Shaded, TopAbs_SHAPE, false);
+            }
+        }
+    }
+
+    m_view->Invalidate();
+}
+
 void OcctRenderer::setShowHighlightedShapes(bool show) {
     m_showHighlightedShapes = show;
 }
@@ -364,7 +462,7 @@ void OcctRenderer::updateView() {
         auto owner = Handle(ShapeOwner)::DownCast(aisShape->GetOwner());
 
         if (m_showHighlightedShapes || !owner->isHighlight) {
-            m_interactiveContext->Display(aisShape, AIS_Shaded, -1, false);
+            m_interactiveContext->Display(aisShape, AIS_Shaded, TopAbs_SHAPE, false);
         } else {
             m_interactiveContext->Remove(aisShape, false);
         }

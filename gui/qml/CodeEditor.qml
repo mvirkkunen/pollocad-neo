@@ -80,6 +80,17 @@ Item {
 
             font.family: "Monospace"
 
+            MouseArea {
+                anchors.fill: parent
+                z: -1
+                hoverEnabled: true
+
+                onPositionChanged: (ev) => {
+                    const pos = code.positionAt(ev.x, ev.y);
+                    viewer.setHoveredPosition(pos);
+                }
+            }
+
             onTextChanged: {
                 if (code.text !== prevText) {
                     prevText = code.text;

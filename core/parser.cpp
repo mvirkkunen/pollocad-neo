@@ -224,7 +224,7 @@ struct function_call_chain {
 
 struct stmt_call {
     static constexpr auto name = "function call statement";
-    static constexpr auto rule = dsl::peek((dsl::p<ident> | kw_for) + ws + dsl::lit_c<'('>) >> (
+    static constexpr auto rule = (dsl::peek(dsl::hash_sign | kw_for) | dsl::peek(dsl::p<ident> + ws + dsl::lit_c<'('>)) >> (
         dsl::p<function_call_chain> + (
             dsl::peek(end_of_block)
             | dsl::semicolon

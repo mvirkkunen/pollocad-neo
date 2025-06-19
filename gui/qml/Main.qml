@@ -45,7 +45,7 @@ ApplicationWindow {
             text: `
 combine() {
   fillet("z", 5) move([-25, -25]) box([50, 50, 2]);
-  tag("remove") # {
+  # remove() {
     cyl(r=5, h=4);
 
     for (a = [45 : 90 : 315]) {
@@ -53,6 +53,11 @@ combine() {
     }
   }
 }
+
+
+move([-20, 0, 50]) box([10, 10, 10]);
+move([0, 0, 50]) box([10, 10, 10]);
+move([20, 0, 50]) box([10, 10, 10]);
 `.trim()
 
             onCodeChanged: {
@@ -129,6 +134,13 @@ combine() {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+
+                    height: 1
+                    color: "#000"
+                }
+
                 ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -180,6 +192,7 @@ combine() {
 
     Component.onCompleted: {
         highlighter.setTextDocument(code.textDocument);
+        highlighter.setOcctView(viewer);
         executor.execute(code.text);
     }
 

@@ -1,3 +1,5 @@
+#include <unordered_set>
+
 #include <QGuiApplication>
 #include <QTextDocument>
 #include <QQuickTextDocument>
@@ -6,8 +8,19 @@
 #include <QQmlContext>
 #include <QSyntaxHighlighter>
 
+#include "occtview.h"
+
 #include "parser.h"
 #include "backgroundexecutor.h"
+
+namespace std {
+    template <> struct hash<std::pair<int, int>> {
+        inline size_t operator()(const std::pair<int, int> &v) const {
+            std::hash<int> int_hasher;
+            return int_hasher(v.first) ^ int_hasher(v.second);
+        }
+    };
+}
 
 class SyntaxHighlighter : public QSyntaxHighlighter {
     Q_OBJECT
@@ -27,6 +40,22 @@ public:
         }*/
 
         rehighlight();
+    }
+
+    void setSpanHovered(int begin, int end, bool highlight) {
+        if (highlight) {
+            m_hoveredSpans.insert({begin, end});
+        } else {
+            m_hoveredSpans.erase({begin, end});
+        }
+
+        auto it = document()->findBlock(begin);
+        auto itEnd = document()->findBlock(end);
+
+        do {
+            rehighlightBlock(it);
+            it = it.next();
+        } while (it.length() && it != itEnd);
     }
 
 protected:
@@ -62,11 +91,36 @@ protected:
                 setFormat(localBegin, localEnd - localBegin, format);
             }
         }
+
+        for (const auto &hover : m_hoveredSpans) {
+            int sbegin = hover.first;
+            int send = hover.second;
+
+            if (sbegin < end && sbegin > begin) {
+                const int localBegin = std::max(0, sbegin - begin);
+                int localEnd = std::min(static_cast<int>(text.length()), send - begin);
+
+                while (localEnd > localBegin + 1 && localEnd >= 1 && text.at(localEnd - 1).isSpace()) {
+                    localEnd--;
+                }
+
+                if (localEnd == localBegin) {
+                    localEnd = std::min(end, localEnd + 1);
+                }
+
+                QTextCharFormat format;
+                //format.setFontUnderline(true);
+                //format.setFontOverline(true);
+                //format.setFontWeight(QFont::Bold);
+                format.setBackground(QColor::fromRgb(0x00, 0x80, 0x00));
+                format.setForeground(QColor::fromRgb(0xff, 0xff, 0xff));
+                setFormat(localBegin, localEnd - localBegin, format);
+            }
+        }
     }
 
     void findBlocks(std::vector<QTextBlock> &blocks) {
         for (const auto &msg : m_messages) {
-
             auto it = document()->findBlock(msg.span.begin);
             auto end = document()->findBlock(msg.span.end);
 
@@ -79,6 +133,7 @@ protected:
 
 private:
     std::vector<LogMessage> m_messages;
+    std::unordered_set<std::pair<int, int>> m_hoveredSpans;
 };
 
 class CodeHighlighter: public QObject
@@ -92,6 +147,12 @@ public:
 
     Q_INVOKABLE void setResult(BackgroundExecutorResult *result) {
         m_highlighter->setMessages(result->messages());
+    }
+
+    Q_INVOKABLE void setOcctView(OcctView *viewer) {
+        connect(viewer, &OcctView::spanHovered, this, [this](int begin, int end, bool hovered) {
+            m_highlighter->setSpanHovered(begin, end, hovered);
+        });
     }
 
 private:

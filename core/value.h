@@ -21,6 +21,7 @@ class Shape {
 public:
     Shape() { }
     Shape(TopoDS_Shape shape, Span span={});
+    Shape(TopoDS_Shape shape, std::vector<Span> spans);
     Shape(TopoDS_Shape shape, std::unordered_map<std::string, Value> props, std::vector<Span> spans);
 
     Shape withShape(TopoDS_Shape shape, Span span={}) const;
@@ -29,6 +30,8 @@ public:
     const TopoDS_Shape &shape() const { return m_shape; }
     bool hasProp(const std::string &name) const;
     Value getProp(const std::string &name) const;
+
+    const std::vector<Span> &spans() const { return m_spans; }
 
     bool operator==(const Shape &) const = default;
 

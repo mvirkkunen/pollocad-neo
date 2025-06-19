@@ -98,7 +98,7 @@ Value addShapeChildren(const CallContext &c, ShapeList shape) {
 
 Value builtin_box(const CallContext &c) {
     auto size = parseVec(c, 1.0);
-    return addShapeChildren(c, ShapeList{BRepPrimAPI_MakeBox{size.X(), size.Y(), size.Z()}.Shape()});
+    return addShapeChildren(c, ShapeList{Shape{BRepPrimAPI_MakeBox{size.X(), size.Y(), size.Z()}.Shape(), c.span()}});
 }
 
 Value builtin_cyl(const CallContext &c) {
@@ -113,7 +113,7 @@ Value builtin_cyl(const CallContext &c) {
         return undefined;
     }
 
-    return addShapeChildren(c, ShapeList{BRepPrimAPI_MakeCylinder{r, h}.Shape()});
+    return addShapeChildren(c, ShapeList{Shape{BRepPrimAPI_MakeCylinder{r, h}.Shape(), c.span()}});
 }
 
 Value builtin_align(const CallContext &c) {
@@ -197,6 +197,20 @@ Value builtin_tag(const CallContext &c) {
     return result;
 }
 
+Value builtin_remove(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    ShapeList result;
+    for (const auto &c : children) {
+        result.push_back(c.withProp("remove", true));
+    }
+
+    return result;
+}
+
 Value builtin_prop(const CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
@@ -240,14 +254,19 @@ Value builtin_combine(const CallContext &c) {
         return undefined;
     }
 
+    std::vector<Span> spans;
+
     auto it = children.cbegin();
     TopoDS_Shape shape = it->shape();
+    std::copy(it->spans().begin(), it->spans().end(), std::back_inserter(spans));
     it++;
 
     for (; it != remove; it++) {
         if (c.canceled()) {
             return undefined;
         }
+
+        std::copy(it->spans().begin(), it->spans().end(), std::back_inserter(spans));
 
         BRepAlgoAPI_Fuse fuse{shape, it->shape()};
         fuse.SimplifyResult();
@@ -264,7 +283,7 @@ Value builtin_combine(const CallContext &c) {
         shape = cut.Shape();
     }
 
-    result.push_back(shape);
+    result.push_back(Shape{shape, spans});
     return result;
 }
 
@@ -493,7 +512,7 @@ Value builtin_chamfer_filler(const CallContext &c) {
             continue;
         }
 
-        result.push_back(ch.withShape(algo.Shape()));
+        result.push_back(ch.withShape(algo.Shape(), c.span()));
     }
 
     return result;
@@ -506,6 +525,7 @@ void register_builtins_shapes(Environment &env) {
     env.setFunction("move", builtin_move);
     env.setFunction("rot", builtin_rot);
     env.setFunction("tag", builtin_tag);
+    env.setFunction("remove", builtin_remove);
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("for", builtin_for);
