@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Fusion
+import QtQuick.Layouts
 import pollocadgui
 
 ApplicationWindow {
@@ -117,37 +118,51 @@ combine() {
                 }
             }
 
-           ScrollView {
-                background: Rectangle {
-                    color: "#ddd"
+            ColumnLayout {
+                RowLayout {
+                    Switch {
+                        text: "Show '#' highlights"
+                        checked: viewer.showHighlightedShapes
+                        onClicked: {
+                            viewer.showHighlightedShapes = checked;
+                        }
+                    }
                 }
 
-                ListView {
-                    id: messages
-                    clip: true
-                    spacing: 2
+                ScrollView {
+                    Layout.fillHeight: true
 
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: text.implicitHeight
+                    background: Rectangle {
+                        color: "#ddd"
+                    }
 
-                        Text {
-                            id: text
-                            color: level === "error" ? "#800" : level === "warning" ? "#880" : "#000"
-                            text: message
-                            clip: true
-                            padding: 8
-                            font.family: "monospace"
-                        }
+                    ListView {
+                        id: messages
+                        clip: true
+                        spacing: 2
 
-                        MouseArea {
-                            id: ma
-                            anchors.fill: parent
+                        delegate: Rectangle {
+                            width: parent.width
+                            height: text.implicitHeight
 
-                            onClicked: {
-                                console.log("what");
-                                console.log(location);
-                                code.cursorPosition = location;
+                            Text {
+                                id: text
+                                color: level === "error" ? "#800" : level === "warning" ? "#880" : "#000"
+                                text: message
+                                clip: true
+                                padding: 8
+                                font.family: "monospace"
+                            }
+
+                            MouseArea {
+                                id: ma
+                                anchors.fill: parent
+
+                                onClicked: {
+                                    console.log("what");
+                                    console.log(location);
+                                    code.cursorPosition = location;
+                                }
                             }
                         }
                     }

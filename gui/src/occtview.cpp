@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include "occtview.h"
 
 #include <QRunnable>
@@ -23,7 +25,6 @@
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
-#include <NCollection_DataMap.hxx>
 
 class OcctRenderer : public QObject, public AIS_ViewController {
     Q_OBJECT
@@ -33,6 +34,11 @@ public:
 
     void setParent(QQuickItem *parent) { m_parent = parent; }
     void setResult(BackgroundExecutorResult *result);
+    void updateView();
+
+    bool showHighlightedShapes() const { return m_showHighlightedShapes; }
+    void setShowHighlightedShapes(bool show);
+
     void wheelEvent(int delta);
     void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
 
@@ -50,6 +56,7 @@ private:
     Handle(AIS_InteractiveContext) m_interactiveContext;
     Handle(AIS_ViewCube) m_viewCube;
     std::vector<Handle(AIS_Shape)> m_shapes;
+    std::atomic_bool m_showHighlightedShapes = true;
 };
 
 OcctView::OcctView()
@@ -60,9 +67,19 @@ OcctView::OcctView()
 }
 
 void OcctView::setResult(BackgroundExecutorResult *result) {
-    window()->scheduleRenderJob(QRunnable::create([result, this] { if (m_renderer) { m_renderer->setResult(result); } }), QQuickWindow::BeforeRenderingStage);
-    window()->update();
+    scheduleRenderJob([result, this] { if (m_renderer) { m_renderer->setResult(result); } });
 }
+
+bool OcctView::showHighlightedShapes() const {
+    return m_renderer ? m_renderer->showHighlightedShapes() : true;
+}
+
+void OcctView::setShowHighlightedShapes(bool show) {
+    m_renderer->setShowHighlightedShapes(show);
+    emit showHighlightedShapesChanged();
+
+    scheduleRenderJob([show, this]() { m_renderer->updateView(); });
+}   
 
 void OcctView::mousePressEvent(QMouseEvent *ev)
 {
@@ -88,8 +105,7 @@ void OcctView::wheelEvent(QWheelEvent *ev)
 {
     ev->accept();
     int delta = ev->pixelDelta().y() / 3;
-    window()->scheduleRenderJob(QRunnable::create([=, this] { if (m_renderer) { m_renderer->wheelEvent(delta); } }), QQuickWindow::BeforeRenderingStage);
-    window()->update();
+    scheduleRenderJob([=, this] { if (m_renderer) { m_renderer->wheelEvent(delta); } });
 }
 
 void OcctView::handleMouseEvent(QSinglePointEvent *ev)
@@ -98,8 +114,7 @@ void OcctView::handleMouseEvent(QSinglePointEvent *ev)
     auto pos = ev->position();
     auto buttons = ev->buttons();
     auto modifiers = ev->modifiers();
-    window()->scheduleRenderJob(QRunnable::create([=, this] { if (m_renderer) { m_renderer->mouseEvent(pos, buttons, modifiers); } }), QQuickWindow::BeforeRenderingStage);
-    window()->update();
+    scheduleRenderJob([=, this] { if (m_renderer) { m_renderer->mouseEvent(pos, buttons, modifiers); } });
 }
 
 void OcctView::handleWindowChanged(QQuickWindow *win)
@@ -124,6 +139,11 @@ void OcctView::cleanup()
 {
     delete m_renderer;
     m_renderer = nullptr;
+}
+
+void OcctView::scheduleRenderJob(std::function<void()> job) {
+    window()->scheduleRenderJob(QRunnable::create(job), QQuickWindow::BeforeRenderingStage);
+    window()->update();
 }
 
 void OcctView::releaseResources()
@@ -272,6 +292,16 @@ void OcctRenderer::paint() {
     }
 }
 
+class ShapeOwner : public Standard_Transient {
+    DEFINE_STANDARD_RTTI_INLINE(ShapeOwner, Standard_Transient)
+
+public:
+    ShapeOwner() { }
+    virtual ~ShapeOwner() { }
+
+    bool isHighlight = false;
+};
+
 void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     if (!result->shapes()) {
         return;
@@ -286,10 +316,14 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     m_shapes.clear();
 
     for (const auto &sh : *result->shapes()) {
+        Handle(ShapeOwner) owner = new ShapeOwner();
+
         Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape());
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
 
         if (sh.hasProp("highlight")) {
+            owner->isHighlight = true;
+
             aisShape->SetColor(Quantity_Color{Quantity_NOC_RED});
             aisShape->SetTransparency();
         } else if (auto pcolor = sh.getProp("color").as<std::string>()) {
@@ -308,14 +342,32 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
         //aisShape->Attributes()->SetFaceBoundaryDraw(false);
         aisShape->Attributes()->SetLineAspect(line);
 
-        m_interactiveContext->Display(aisShape, AIS_Shaded, -1, false);
+        aisShape->SetOwner(owner);
 
         m_shapes.push_back(aisShape);
     }
 
+    updateView();
+
     if (center) {
         m_view->SetProj(V3d_XnegYnegZpos, false);
         m_view->FitMinMax(m_view->Camera(), m_view->View()->MinMaxValues(), 0.01);
+    }
+}
+
+void OcctRenderer::setShowHighlightedShapes(bool show) {
+    m_showHighlightedShapes = show;
+}
+
+void OcctRenderer::updateView() {
+    for (const auto &aisShape : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(aisShape->GetOwner());
+
+        if (m_showHighlightedShapes || !owner->isHighlight) {
+            m_interactiveContext->Display(aisShape, AIS_Shaded, -1, false);
+        } else {
+            m_interactiveContext->Remove(aisShape, false);
+        }
     }
 
     m_view->Invalidate();
