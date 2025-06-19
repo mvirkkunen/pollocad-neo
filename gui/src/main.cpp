@@ -101,7 +101,7 @@ private:
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-    app.setWindowIcon(QIcon(":/qt/qml/pollocad/icon.png"));
+    app.setWindowIcon(QIcon(":/qt/qml/pollocad/res/icon.png"));
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QQmlApplicationEngine engine;
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
         &app,
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
-    engine.loadFromModule("pollocadgui", "Main");
+    engine.loadFromModule("pollocad", "Main");
 
     return app.exec();
 }

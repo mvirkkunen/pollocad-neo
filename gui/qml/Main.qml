@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Fusion
 import QtQuick.Layouts
-import pollocadgui
+import pollocad
 
 ApplicationWindow {
     property bool shapeOutOfDate: false
@@ -80,7 +80,7 @@ combine() {
             }
 
             Item {
-                SplitView.preferredHeight: 800
+                SplitView.preferredHeight: 700
 
                 OcctView {
                     id: viewer
@@ -130,6 +130,7 @@ combine() {
                 }
 
                 ScrollView {
+                    Layout.fillWidth: true
                     Layout.fillHeight: true
 
                     background: Rectangle {
@@ -159,8 +160,6 @@ combine() {
                                 anchors.fill: parent
 
                                 onClicked: {
-                                    console.log("what");
-                                    console.log(location);
                                     code.cursorPosition = location;
                                 }
                             }
