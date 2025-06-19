@@ -232,7 +232,7 @@ Value builtin_combine(const CallContext &c) {
         children.begin(),
         children.end(),
         std::back_inserter(result),
-        [](const auto &ch) { return ch.hasProp("highlight"); }
+        [](const auto &ch) { return ch.hasProp("highlight") && ch.hasProp("remove"); }
     );
     
     auto remove = std::partition(children.begin(), children.end(), [](const auto& s) { return !s.hasProp("remove"); });
@@ -291,73 +291,19 @@ Value builtin_repeat(const CallContext &c) {
     return result;
 }
 
-// fillet(1)
-// fillet(1, "y")
+struct EdgeFilters {
+    double r = 1.0;
+    gp_XYZ dir{};
+    gp_XYZ bound{0.5, 0.5, 0.5};
+    Bnd_Box bbox{};
+};
 
-template <typename Algorithm>
-Value builtin_chamfer_filler(const CallContext &c) {
-    struct EdgeFilter {
-        double r;
-        gp_XYZ dir;
-        gp_XYZ bound{0.5, 0.5, 0.5};
-    };
-
-    auto children = c.children();
-    if (children.empty()) {
-        return undefined;
-    }
-
-    auto pr = c.get<double>(1);
-    double r = pr ? std::max(*pr, 0.0) : 1.0;
-
-    std::vector<std::pair<std::string, double>> filterSpecs;
-
-    auto plistOrSpec = c.get(0);
-    if (!plistOrSpec) {
-        return children;
-    }
-
-    std::vector<EdgeFilter> filters;
-
-    if (auto pspec = plistOrSpec->as<std::string>()) {
-        filterSpecs.emplace_back(*pspec, r);
-    } else if (auto plist = plistOrSpec->as<List>()) {
-        for (const auto &spec : *plist) {
-            if (const auto pspec = spec.as<std::string>()) {
-                filterSpecs.emplace_back(*pspec, r);
-            } else if (const auto ppair = spec.as<List>()) {
-                if (ppair->size() == 0 || ppair->size() > 2) {
-                    c.warning(std::format("Invalid edge specification pair: {}", spec.display()));
-                    continue;
-                }
-
-                auto pspec = (*ppair)[0].as<std::string>();
-                if (!pspec) {
-                    c.warning(std::format("Invalid edge specification: {}", (*ppair)[0].display()));
-                    continue;
-                }
-
-                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : &r;
-                if (!pr) {
-                    c.warning(std::format("Invalid radius specification: {}", (*ppair)[1].display()));
-                    continue;
-                }
-
-                filterSpecs.emplace_back(*pspec, *pr);
-            } else {
-                c.warning(std::format("Invalid edge specification: {}", spec.display()));
-            }
-        }
-    } else {
-        c.warning(std::format("Invalid edge specification: {}", plistOrSpec->display()));
-    }
-
-    for (const auto &spec : filterSpecs) {
-        std::istringstream ss(spec.first);
+void parseEdgeSpec(const CallContext &c, std::vector<EdgeFilters> &out, double r, const Value &spec) {
+    EdgeFilters filter{r};
+    if (auto pstr = spec.as<std::string>()) {
+        std::istringstream ss(*pstr);
         std::string specItem;
         while (ss >> specItem) {
-            EdgeFilter filter{spec.second};
-
             for (const auto ch : specItem) {
                 switch (ch) {
                     case 'x': filter.dir.SetX(1.0); break;
@@ -369,13 +315,60 @@ Value builtin_chamfer_filler(const CallContext &c) {
                     case 'l': filter.bound.SetX(0.0); break;
                     case 'n': filter.bound.SetY(0.0); break;
                     case 'b': filter.bound.SetZ(0.0); break;
-                    default: c.warning(std::format("Invalid edge specification: {}", spec.first)); goto next;
+                    default: c.warning(std::format("Invalid edge specification: {}", *pstr)); return;
                 }
             }
 
-            filters.push_back(filter);
             next:;
         }
+
+        out.push_back(filter);
+    } else if (auto pshape = spec.as<ShapeList>()) {
+        filter.bbox = getBoundingBox(*pshape);
+        out.push_back(filter);
+    } else {
+        c.warning(std::format("Invalid edge specification: {}", spec.display()));
+    }
+}
+
+template <typename Algorithm>
+Value builtin_chamfer_filler(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto pr = c.get<double>(1);
+    double r = pr ? std::max(*pr, 0.0) : 1.0;
+
+    auto plistOrSpec = c.get(0);
+    if (!plistOrSpec) {
+        return children;
+    }
+
+    std::vector<EdgeFilters> filters;
+
+    if (auto plist = plistOrSpec->as<List>()) {
+        for (const auto &spec : *plist) {
+            if (const auto ppair = spec.as<List>()) {
+                if (ppair->size() == 0 || ppair->size() > 2) {
+                    c.warning(std::format("Invalid edge specification pair: {}", spec.display()));
+                    continue;
+                }
+
+                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : &r;
+                if (!pr) {
+                    c.warning(std::format("Invalid radius specification: {}", (*ppair)[1].display()));
+                    continue;
+                }
+
+                parseEdgeSpec(c, filters, *pr, (*ppair)[0]);
+            } else {
+                parseEdgeSpec(c, filters, r, spec);
+            }
+        }
+    } else {
+        parseEdgeSpec(c, filters, r, *plistOrSpec);
     }
 
     ShapeList result;
@@ -411,6 +404,12 @@ Value builtin_chamfer_filler(const CallContext &c) {
                     const auto plane = gp_Pln{gp_Ax3{pt, f.bound - gp_XYZ{0.5, 0.5, 0.5}}};
 
                     if (!(plane.Contains(edgeBoundingBox.CornerMin(), Precision::Approximation()) && plane.Contains(edgeBoundingBox.CornerMax(), Precision::Approximation()))) {
+                        continue;
+                    }
+                }
+
+                if (!f.bbox.IsVoid()) {
+                    if (!f.bbox.IsOut(edgeBoundingBox)) {
                         continue;
                     }
                 }

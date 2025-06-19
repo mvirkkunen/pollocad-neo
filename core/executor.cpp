@@ -65,6 +65,17 @@ bool Executor::isBusy() const {
 namespace
 {
 
+void addHighlighted(ShapeList &shapes, const Value &value) {
+    if (auto pshape = value.as<ShapeList>()) {
+        std::copy_if(
+            pshape->begin(),
+            pshape->end(),
+            std::back_inserter(shapes),
+            [](const auto &sh) { return sh.hasProp("highlight"); }
+        );
+    }
+}
+
 Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::Expr* expr) {
     if (context->isCanceled()) {
         return undefined;
@@ -106,6 +117,8 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     error = true;
                 }
 
+                ShapeList highlighted;
+
                 std::vector<Value> positional;
                 for (const auto &ch : ex.positional) {
                     if (context->isCanceled()) {
@@ -113,6 +126,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     }
 
                     auto val = eval(context, env, &ch);
+                    addHighlighted(highlighted, val);
                     positional.push_back(val);
                 }
 
@@ -123,6 +137,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     }
 
                     auto val = eval(context, env, &*ch);
+                    addHighlighted(highlighted, val);
                     named.emplace(name, val);
                 }
 
@@ -130,16 +145,29 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     return undefined;
                 }
 
+                Value result = undefined;
                 try {
-                    return (**func)(CallContext(*context, positional, named, ex.span));
+                    result = (**func)(CallContext(*context, positional, named, ex.span));
                 } catch (Standard_Failure &exc) {
-                    auto msg = std::format("Exception during processing: {}: {}", typeid(exc).name(), exc.GetMessageString());
+                    auto msg = std::format("Exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
                     context->messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
-                    return undefined;
                 } catch (...) {
                     context->messages().push_back(LogMessage{LogMessage::Level::Error, "Unknown exception during processing", ex.span});
-                    return undefined;
                 }
+
+                if (!highlighted.empty()) {
+                    if (result.undefined()) {
+                        return highlighted;
+                    } else if (auto pshapes = result.as<ShapeList>()) {
+                        ShapeList combined = *pshapes;
+                        std::copy(highlighted.begin(), highlighted.end(), std::back_inserter(combined));
+                        return combined;
+                    } else {
+                        //context->messages().push_back(LogMessage{LogMessage::Level::Warning, "Could not show highlighted argument because function did not return shapes"});
+                    }
+                }
+
+                return result;
             } else if constexpr (std::is_same_v<T, ast::LambdaExpr>) {
                 std::unordered_map<std::string, Value> defaults;
                 for (const auto& arg : ex.args) {
