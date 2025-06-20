@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <format>
 #include <vector>
 
 #include "value.h"
@@ -28,10 +29,6 @@ public:
 
     const std::unordered_map<std::string, Value> &named() const { return m_named; }
 
-    //const Value &get(size_t index) const { return m_positional.at(index); }
-
-    //const Value &get(std::string name) const { return m_named.at(name); }
-
     const Value *get(size_t index) const {
         return index < m_positional.size() ? &m_positional.at(index) : nullptr;
     }
@@ -42,15 +39,35 @@ public:
     }
 
     template <typename T>
-    const T *get(size_t index) const {
+    const T *get(size_t index, bool typeError=true) const {
         auto v = get(index);
-        return v ? v->as<T>() : nullptr;
+        if (!v) {
+            return nullptr;
+        }
+
+        auto tv = v->as<T>();
+        if (!tv) {
+            warning(std::format("parameter {}: expected {}, got {}", index + 1, Value::typeName<T>(), v->type()));
+            return nullptr;
+        }
+
+        return tv;
     }
 
     template <typename T>
-    const T *get(const std::string &name) const {
+    const T *get(const std::string &name, bool typeError=true) const {
         auto v = get(name);
-        return v ? v->as<T>() : nullptr;
+        if (!v) {
+            return nullptr;
+        }
+
+        auto tv = v->as<T>();
+        if (!tv) {
+            warning(std::format("parameter {}: expected {}, got {}", name, Value::typeName<T>(), v->type()));
+            return nullptr;
+        }
+
+        return tv;
     }
 
     const ShapeList children() const;

@@ -78,4 +78,23 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const Value& val);
 
     bool operator==(const Value &) const = default;
+
+    template <typename T>
+    static const char *typeName() {
+        if constexpr (std::is_same_v<T, Undefined>) {
+            return "undefined";
+        } else if constexpr (std::is_same_v<T, double>) {
+            return "number";
+        } else if constexpr (std::is_same_v<T, std::string>) {
+            return "string";
+        } else if constexpr (std::is_same_v<T, ShapeList>) {
+            return "shapelist";
+        } else if constexpr (std::is_same_v<T, Function>) {
+            return "function";
+        } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
+            return "list";
+        } else {
+            static_assert(false, "non-exhaustive visitor!");
+        }
+    }
 };

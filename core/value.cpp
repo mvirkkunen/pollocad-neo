@@ -127,24 +127,5 @@ void Value::display(std::ostream &os) const {
 }
 
 std::string Value::type() const {
-    return std::visit(
-        [](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Undefined>) {
-                return "undefined";
-            } else if constexpr (std::is_same_v<T, double>) {
-                return "number";
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                return "string";
-            } else if constexpr (std::is_same_v<T, ShapeList>) {
-                return "shapelist";
-            } else if constexpr (std::is_same_v<T, Function>) {
-                return "function";
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                return "list";
-            } else {
-                static_assert(false, "non-exhaustive visitor!");
-            }
-        },
-        v);
+    return std::visit([](const auto &v) { return typeName<std::decay_t<decltype(v)>>(); }, v);
 }
