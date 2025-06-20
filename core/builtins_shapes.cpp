@@ -372,14 +372,15 @@ struct EdgeFilters {
     gp_XYZ dir{};
     gp_XYZ bound{0.5, 0.5, 0.5};
     Bnd_Box bbox{};
+    TopoDS_Shape shape;
 };
 
-void parseEdgeSpec(const CallContext &c, std::vector<EdgeFilters> &out, double r, const Value &spec) {
-    EdgeFilters filter{r};
+void parseEdgeSpec(const CallContext &c, std::vector<Shape> &highlightOut, std::vector<EdgeFilters> &out, double r, const Value &spec) {
     if (auto pstr = spec.as<std::string>()) {
         std::istringstream ss(*pstr);
         std::string specItem;
         while (ss >> specItem) {
+            EdgeFilters filter{r};
             for (const auto ch : specItem) {
                 switch (ch) {
                     case 'x': filter.dir.SetX(1.0); break;
@@ -395,13 +396,15 @@ void parseEdgeSpec(const CallContext &c, std::vector<EdgeFilters> &out, double r
                 }
             }
 
+            out.push_back(filter);
+
             next:;
         }
-
-        out.push_back(filter);
     } else if (auto pshape = spec.as<ShapeList>()) {
+        EdgeFilters filter{r};
         filter.bbox = getBoundingBox(*pshape);
         out.push_back(filter);
+        std::copy_if(pshape->begin(), pshape->end(), std::back_inserter(highlightOut), [](const Shape &sh) { return sh.hasProp("highlight"); });
     } else {
         c.warning(std::format("Invalid edge specification: {}", spec.display()));
     }
@@ -422,6 +425,7 @@ Value builtin_chamfer_filler(const CallContext &c) {
         return children;
     }
 
+    ShapeList result;
     std::vector<EdgeFilters> filters;
 
     if (auto plist = plistOrSpec->as<List>()) {
@@ -438,16 +442,15 @@ Value builtin_chamfer_filler(const CallContext &c) {
                     continue;
                 }
 
-                parseEdgeSpec(c, filters, *pr, (*ppair)[0]);
+                parseEdgeSpec(c, result, filters, *pr, (*ppair)[0]);
             } else {
-                parseEdgeSpec(c, filters, r, spec);
+                parseEdgeSpec(c, result, filters, r, spec);
             }
         }
     } else {
-        parseEdgeSpec(c, filters, r, *plistOrSpec);
+        parseEdgeSpec(c, result, filters, r, *plistOrSpec);
     }
 
-    ShapeList result;
     for (const auto &ch : children) {
         Algorithm algo(ch.shape());
         auto shapeBoundingBox = getBoundingBox(ch.shape());
@@ -485,7 +488,7 @@ Value builtin_chamfer_filler(const CallContext &c) {
                 }
 
                 if (!f.bbox.IsVoid()) {
-                    if (!f.bbox.IsOut(edgeBoundingBox)) {
+                    if (f.bbox.IsOut(edgeBoundingBox)) {
                         continue;
                     }
                 }
