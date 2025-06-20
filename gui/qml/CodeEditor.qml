@@ -84,6 +84,7 @@ Item {
                 anchors.fill: parent
                 z: -1
                 hoverEnabled: true
+                cursorShape: undefined
 
                 onPositionChanged: (ev) => {
                     const pos = code.positionAt(ev.x, ev.y);
@@ -94,7 +95,7 @@ Item {
             onTextChanged: {
                 if (code.text !== prevText) {
                     prevText = code.text;
-                    codeChanged();
+                    typingTimeout.restart();
                 }
             }
 
@@ -169,7 +170,7 @@ Item {
                 code.remove(start, cursor);
                 code.insert(start, num);
 
-                textChanged();
+                updateNow();
             }
 
             function returnIndent() {
@@ -181,16 +182,28 @@ Item {
 
                 code.remove(code.selectionStart, code.selectionEnd);
                 code.insert(code.selectionStart, "\n" + spaces);
-
-                textChanged();
             }
 
             function tabIndent(back) {
                 code.remove(code.selectionStart, code.selectionEnd);
                 code.insert(code.selectionStart, "    ");
-
-                textChanged();
             }
         }
+    }
+
+    function updateNow() {
+        typingTimeout.stop();
+        codeChanged();
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Refresh]
+        onActivated: updateNow();
+    }
+
+    Timer {
+        id: typingTimeout
+        interval: 1000
+        onTriggered: codeChanged();
     }
 }

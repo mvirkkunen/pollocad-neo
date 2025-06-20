@@ -45,9 +45,7 @@ ApplicationWindow {
             text: loadedCode
 
             onCodeChanged: {
-                if (!typingTimeout.running) {
-                    typingTimeout.restart();
-                }
+                executor.execute(code.text);
             }
         }
 
@@ -92,7 +90,7 @@ ApplicationWindow {
                     border.width: 12
                     color: "transparent"
 
-                    visible: shapeOutOfDate && !typingTimeout.running
+                    visible: shapeOutOfDate
                 }
 
                 Rectangle {
@@ -103,7 +101,7 @@ ApplicationWindow {
                     border.width: 4
                     color: "transparent"
 
-                    visible: shapeOutOfDate && !typingTimeout.running
+                    visible: shapeOutOfDate
                 }
             }
 
@@ -166,14 +164,6 @@ ApplicationWindow {
         }
     }
 
-    Shortcut {
-        sequences: [StandardKey.Refresh]
-        onActivated: {
-            typingTimeout.stop();
-            executor.execute(code.text);
-        }
-    }
-
     Component.onCompleted: {
         highlighter.setTextDocument(code.textDocument);
         highlighter.setOcctView(viewer);
@@ -189,11 +179,5 @@ ApplicationWindow {
             messages.model = res.messagesModel();
             shapeOutOfDate = !res.hasShapes;
         }
-    }
-
-    Timer {
-        id: typingTimeout
-        interval: 1000
-        onTriggered: executor.execute(code.text);
     }
 }
