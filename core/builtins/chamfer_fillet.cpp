@@ -132,7 +132,14 @@ Value builtin_chamfer_filler(const CallContext &c) {
                 }
 
                 if (!f.bbox.IsVoid()) {
-                    if (f.bbox.IsOut(edgeBoundingBox)) {
+                    if (!(
+                        edgeBoundingBox.CornerMin().X() >= f.bbox.CornerMin().X()
+                        && edgeBoundingBox.CornerMin().Y() >= f.bbox.CornerMin().Y()
+                        && edgeBoundingBox.CornerMin().Z() >= f.bbox.CornerMin().Z()
+                        && edgeBoundingBox.CornerMax().X() <= f.bbox.CornerMax().X()
+                        && edgeBoundingBox.CornerMax().Y() <= f.bbox.CornerMax().Y()
+                        && edgeBoundingBox.CornerMax().Z() <= f.bbox.CornerMax().Z()))
+                    {
                         continue;
                     }
                 }
