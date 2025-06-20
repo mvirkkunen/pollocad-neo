@@ -20,13 +20,15 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
 }
 
+#define REGISTER_BUILTINS(NAME) { extern void add_builtins_##NAME(Environment &env); add_builtins_##NAME(*m_defaultEnvironment); }
+
 Executor::Executor() {
     m_defaultEnvironment = std::make_shared<Environment>(nullptr);
 
-    extern void register_builtins_values(Environment &env);
-    extern void register_builtins_shapes(Environment &env);
-    register_builtins_values(*m_defaultEnvironment);
-    register_builtins_shapes(*m_defaultEnvironment);
+    REGISTER_BUILTINS(chamfer_fillet);
+    REGISTER_BUILTINS(primitive_shapes);
+    REGISTER_BUILTINS(primitives);
+    REGISTER_BUILTINS(shape_manipulation);
 }
 
 ExecutorResult Executor::execute(const std::string &code) {

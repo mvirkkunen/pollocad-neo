@@ -5,8 +5,11 @@ add_library(PollocadCore
     contexts.cpp contexts.h
     executor.h executor.cpp
     logmessage.h
-    builtins_values.cpp
-    builtins_shapes.cpp
+    builtins/helpers.h builtins/helpers.cpp
+    builtins/chamfer_fillet.cpp
+    builtins/primitive_shapes.cpp
+    builtins/primitives.cpp
+    builtins/shape_manipulation.cpp
 )
 
 target_include_directories(PollocadCore

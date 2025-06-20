@@ -1,6 +1,6 @@
 #include <format>
 
-#include "contexts.h"
+#include "helpers.h"
 
 namespace
 {
@@ -167,7 +167,7 @@ Value builtin_echo(const CallContext &c) {
 
 }
 
-void register_builtins_values(Environment &env) {
+void add_builtins_primitives(Environment &env) {
     env.setFunction("[]", builtin_index);
     env.setFunction("if", builtin_if);
     env.setFunction("-", builtin_minus);
