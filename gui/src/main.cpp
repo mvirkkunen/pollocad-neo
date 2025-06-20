@@ -1,5 +1,6 @@
 #include <unordered_set>
 
+#include <QFile>
 #include <QGuiApplication>
 #include <QTextDocument>
 #include <QQuickTextDocument>
@@ -172,6 +173,19 @@ int main(int argc, char *argv[])
 
     CodeHighlighter highlighter;
     engine.rootContext()->setContextProperty("highlighter", &highlighter);
+
+    QString loadedCode = "pollo();\n";
+    const auto &args = QGuiApplication::arguments();
+    if (args.length() >= 2) {
+        const auto &path = args.at(1);
+        QFile file(args.at(1));
+        if (file.open(QFile::ReadOnly)) {
+            loadedCode = QString::fromUtf8(file.readAll());
+        } else {
+            std::cerr << "Could not open " << path.toStdString() << "\n";
+        }
+    }
+    engine.rootContext()->setContextProperty("loadedCode", loadedCode);
 
     QObject::connect(
         &engine,

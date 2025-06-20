@@ -42,23 +42,7 @@ ApplicationWindow {
             id: code
             SplitView.preferredWidth: 600
 
-            text: `
-combine() {
-  fillet("z", 5) move([-25, -25]) box([50, 50, 2]);
-  # remove() {
-    cyl(r=5, h=4);
-
-    for (a = [45 : 90 : 315]) {
-      rot(z=a) move(x=22) cyl(r=3, h=2);
-    }
-  }
-}
-
-
-move([-20, 0, 50]) box([10, 10, 10]);
-move([0, 0, 50]) box([10, 10, 10]);
-move([20, 0, 50]) box([10, 10, 10]);
-`.trim()
+            text: loadedCode
 
             onCodeChanged: {
                 if (!typingTimeout.running) {
