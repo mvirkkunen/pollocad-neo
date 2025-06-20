@@ -94,8 +94,8 @@ gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value
                 case 'r': r.SetX(+1.0); break;
                 case 'n': r.SetY(-1.0); break;
                 case 'f': r.SetY(+1.0); break;
-                case 'b': case 'u': r.SetZ(-1.0); break;
-                case 't': case 'd': r.SetZ(+1.0); break;
+                case 'b': case 'd': r.SetZ(-1.0); break;
+                case 't': case 'u': r.SetZ(+1.0); break;
                 default: c.warning(std::format("invalid {} (contains unknown character): '{}'", name, dir)); return default_;
             }
         }

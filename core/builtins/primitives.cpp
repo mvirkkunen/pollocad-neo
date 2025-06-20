@@ -31,48 +31,86 @@ Value builtin_if(const CallContext &c) {
     }
 }
 
-Value builtin_minus(const CallContext &c) {
-    double result = 0.0;
-
-    for (const Value &v : c.positional()) {
-        auto n = v.as<double>();
-        if (n) {
-            result -= *n;
+auto builtin_un_op(std::function<double(double)> op) {
+    return [op](const CallContext &c) -> Value {
+        if (c.positional().size() != 1) {
+            return c.error("malformed unary operation (incorrect argument count)");
         }
-    }
 
-    return result;
+        auto a = c.get(0);
+
+        if (auto *pna = a->as<double>()) {
+            return op(*pna);
+        } else if (auto *pla = a->as<List>()) {
+            List result;
+            result.reserve(pla->size());
+
+            for (int i = 0; i < pla->size(); i++) {
+                if ((*pla)[i].undefined()) {
+                    result.push_back(undefined);
+                } else {
+                    auto *pna = (*pla)[i].as<double>();
+                    if (!pna) {
+                        return c.error("list items must be either numbers or undefined");
+                    }
+
+                    result.push_back(op(*pna));
+                }
+            }
+
+            return result;
+        } else {
+            return c.error("operand must be either number or list");
+        }
+    };
 }
 
 auto builtin_bin_op(std::function<double(double, double)> op) {
     return [op](const CallContext &c) -> Value {
-        auto it = c.positional().begin();
-        if (it == c.positional().end()) {
-            return undefined;
+        if (c.positional().size() != 2) {
+            return c.error("malformed binary operation (incorrect argument count)");
         }
 
-        auto n = it->as<double>();
-        if (!n) {
-            return undefined;
-        }
+        auto a = c.get(0);
+        auto b = c.get(1);
 
-        double result = *n;
-        for (it++; it != c.positional().end(); it++) {
-            auto n = it->as<double>();
-            if (!n) {
-                return undefined;
+        if (auto *pna = a->as<double>()) {
+            if (auto *pnb = b->as<double>()) {
+                return op(*pna, *pnb);
+            } else {
+                return c.error("both operands must be either numbers or lists");
             }
+        } else if (auto *pla = a->as<List>()) {
+            if (auto *plb = b->as<List>()) {
+                List result;
+                result.reserve(pla->size());
 
-            result = op(result, *n);
+                for (int i = 0; i < pla->size(); i++) {
+                    if ((*pla)[i].undefined() || i >= plb->size() || (*plb)[i].undefined()) {
+                        result.push_back(undefined);
+                    } else {
+                        auto *pna = (*pla)[i].as<double>();
+                        if (!pna) {
+                            return c.error("list items must be either numbers or undefined");
+                        }
+
+                        auto *pnb = (*plb)[i].as<double>();
+                        if (!pna) {
+                            return c.error("list items must be either numbers or undefined");
+                        }
+
+                        result.push_back(op(*pna, *pnb));
+                    }
+                }
+
+                return result;
+            } else {
+                return c.error("both operands must be either numbers or lists");
+            }
+        } else {
+            return c.error("both operands must be either numbers or lists");
         }
-
-        return result;
     };
-}
-
-Value builtin_floor(const CallContext &c) {
-    auto n = c.get<double>(0);
-    return n ? Value{std::floor(*n)} : undefined;
 }
 
 Value builtin_index(const CallContext &c) {
@@ -168,16 +206,38 @@ Value builtin_echo(const CallContext &c) {
 }
 
 void add_builtins_primitives(Environment &env) {
-    env.setFunction("[]", builtin_index);
-    env.setFunction("if", builtin_if);
-    env.setFunction("-", builtin_minus);
-    env.setFunction("+", builtin_bin_op([](auto a, auto b) { return a + b; }));
+    env.setFunction("!", builtin_un_op([](auto a) { return !static_cast<bool>(a); }));
+    env.setFunction("~", builtin_un_op([](auto a) { return ~static_cast<uint64_t>(a); }));
+
     env.setFunction("*", builtin_bin_op([](auto a, auto b) { return a * b; }));
     env.setFunction("/", builtin_bin_op([](auto a, auto b) { return a / b; }));
-    env.setFunction("%", builtin_bin_op([](auto a, auto b) { return static_cast<int>(a) % static_cast<int>(b); }));
+    env.setFunction("%", builtin_bin_op([](auto a, auto b) { return static_cast<int64_t>(a) % static_cast<int64_t>(b); }));
+    env.setFunction("+", builtin_bin_op([](auto a, auto b) { return a + b; }));
+
+    env.setFunction("-", builtin_bin_op([](auto a, auto b) { return a - b; }));
+
+    env.setFunction("<", builtin_bin_op([](auto a, auto b) { return a < b; }));
+    env.setFunction("<=", builtin_bin_op([](auto a, auto b) { return a <= b; }));
+    env.setFunction(">", builtin_bin_op([](auto a, auto b) { return a > b; }));
+    env.setFunction(">=", builtin_bin_op([](auto a, auto b) { return a >= b; }));
+
+    env.setFunction("==", builtin_bin_op([](auto a, auto b) { return a == b; }));
+    env.setFunction("!=", builtin_bin_op([](auto a, auto b) { return a != b; }));
+
+    env.setFunction("&", builtin_bin_op([](auto a, auto b) { return static_cast<uint64_t>(a) & static_cast<uint64_t>(b); }));
+
+    env.setFunction("|", builtin_bin_op([](auto a, auto b) { return static_cast<uint64_t>(a) & static_cast<uint64_t>(b); }));
+
+    env.setFunction("floor", builtin_un_op([](auto a) { return std::floor(a); }));
+    env.setFunction("ceil", builtin_un_op([](auto a) { return std::ceil(a); }));
+    env.setFunction("round", builtin_un_op([](auto a) { return std::round(a); }));
+
+    env.setFunction("[]", builtin_index);
+
+    env.setFunction("if", builtin_if);
+
     env.setFunction("list", builtin_list);
-    env.setFunction("floor", builtin_floor);
-    env.setFunction("type", builtin_type);
     env.setFunction("str", builtin_str);
+    env.setFunction("type", builtin_type);
     env.setFunction("echo", builtin_echo);
 }

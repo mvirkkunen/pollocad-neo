@@ -299,7 +299,19 @@ struct expr_number_literal : lexy::token_production {
 };
 
 struct expr_string_literal : lexy::token_production {
-    static constexpr auto rule = dsl::quoted(-dsl::unicode::control);
+    struct quoted_string_ {
+        static constexpr auto name = "quoted string";
+        static constexpr auto rule = dsl::quoted(-dsl::unicode::control);
+        static constexpr auto value = lexy::as_string<std::string>;
+    };
+
+    struct symbol_string_ {
+        static constexpr auto name = "symbol string";
+        static constexpr auto rule = dsl::colon >> dsl::capture(dsl::token(ident_chars));
+        static constexpr auto value = lexy::as_string<std::string>;
+    };
+
+    static constexpr auto rule = dsl::p<quoted_string_> | dsl::p<symbol_string_>;
     static constexpr auto value = lexy::as_string<std::string>
         >> lexy::callback<Expr>([](std::string value) { return LiteralExpr{value}; });
 };
@@ -370,47 +382,105 @@ struct expr_atom {
 };
 
 template <char c>
-auto op = dsl::op(dsl::lit_c<c>);
+auto op_c = dsl::op(dsl::lit_c<c>);
 
-constexpr auto op_plus = op<'+'>;
-constexpr auto op_minus = op<'-'>;
-constexpr auto op_mul = op<'*'>;
-constexpr auto op_div = op<'/'>;
-constexpr auto op_mod = op<'%'>;
+#define OP_S(NAME) dsl::op(LEXY_LIT(NAME));
+
+constexpr auto op_plus = op_c<'+'>;
+constexpr auto op_minus = op_c<'-'>;
+constexpr auto op_not = op_c<'!'>;
+constexpr auto op_bnot = op_c<'~'>;
+
+constexpr auto op_mul = op_c<'*'>;
+constexpr auto op_div = op_c<'/'>;
+constexpr auto op_mod = op_c<'%'>;
+
+constexpr auto op_lt = OP_S("<");
+constexpr auto op_le = OP_S("<=");
+constexpr auto op_gt = OP_S(">");
+constexpr auto op_ge = OP_S(">=");
+
+constexpr auto op_eq = OP_S("==");
+constexpr auto op_ne = OP_S("!=");
+
+constexpr auto op_band = op_c<'&'>;
+
+constexpr auto op_bor = op_c<'|'>;
 
 struct expr_ : lexy::expression_production
 {
     static constexpr auto name = "expression";
     static constexpr auto atom = dsl::p<expr_atom>;
 
-    struct prefix_ : dsl::prefix_op
+    struct minus_not_bnot_ : dsl::prefix_op
     {
-        static constexpr auto op = op_minus;
+        static constexpr auto op = op_plus / op_minus / op_not / op_bnot;
         using operand = dsl::atom;
     };
 
-    struct product_ : dsl::infix_op_left
+    struct mul_div_mod_ : dsl::infix_op_left
     {
         static constexpr auto op = op_mul / op_div / op_mod;
-        using operand = prefix_;
+        using operand = minus_not_bnot_;
     };
 
-    struct sum_ : dsl::infix_op_left
+    struct plus_minus_ : dsl::infix_op_left
     {
         static constexpr auto op = op_plus / op_minus;
-        using operand = product_;
+        using operand = mul_div_mod_;
     };
 
-    using operation = sum_;
+    struct lt_le_gt_ge_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_lt / op_le / op_gt / op_ge;
+        using operand = plus_minus_;
+    };
+
+    struct eq_ne_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_eq / op_ne;
+        using operand = lt_le_gt_ge_;
+    };
+
+    struct band_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_band;
+        using operand = eq_ne_;
+    };
+
+    struct bor_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_bor;
+        using operand = band_;
+    };
+
+    using operation = bor_;
 
     static constexpr auto value = lexy::callback<Expr>(
         [](Expr expr) { return std::move(expr); },
-        [](lexy::op<op_minus>, Expr val) { return CallExpr{"-", move_vec(std::move(val))}; },
+        [](lexy::op<op_plus>, Expr val) { return CallExpr{"+", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
+        [](lexy::op<op_minus>, Expr val) { return CallExpr{"-", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
+        [](lexy::op<op_not>, Expr val) { return CallExpr{"!", move_vec(std::move(val))}; },
+        [](lexy::op<op_bnot>, Expr val) { return CallExpr{"~", move_vec(std::move(val))}; },
+
         [](Expr lhs, lexy::op<op_mul>, Expr rhs) { return CallExpr{"*", move_vec(std::move(lhs), std::move(rhs))}; },
         [](Expr lhs, lexy::op<op_div>, Expr rhs) { return CallExpr{"/", move_vec(std::move(lhs), std::move(rhs))}; },
         [](Expr lhs, lexy::op<op_mod>, Expr rhs) { return CallExpr{"%", move_vec(std::move(lhs), std::move(rhs))}; },
+
         [](Expr lhs, lexy::op<op_plus>, Expr rhs) { return CallExpr{"+", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_minus>, Expr rhs) { return CallExpr{"-", move_vec(std::move(lhs), std::move(rhs))}; }
+        [](Expr lhs, lexy::op<op_minus>, Expr rhs) { return CallExpr{"-", move_vec(std::move(lhs), std::move(rhs))}; },
+
+        [](Expr lhs, lexy::op<op_lt>, Expr rhs) { return CallExpr{"<", move_vec(std::move(lhs), std::move(rhs))}; },
+        [](Expr lhs, lexy::op<op_le>, Expr rhs) { return CallExpr{"<=", move_vec(std::move(lhs), std::move(rhs))}; },
+        [](Expr lhs, lexy::op<op_gt>, Expr rhs) { return CallExpr{">", move_vec(std::move(lhs), std::move(rhs))}; },
+        [](Expr lhs, lexy::op<op_ge>, Expr rhs) { return CallExpr{">=", move_vec(std::move(lhs), std::move(rhs))}; },
+
+        [](Expr lhs, lexy::op<op_eq>, Expr rhs) { return CallExpr{"==", move_vec(std::move(lhs), std::move(rhs))}; },
+        [](Expr lhs, lexy::op<op_ne>, Expr rhs) { return CallExpr{"!=", move_vec(std::move(lhs), std::move(rhs))}; },
+
+        [](Expr lhs, lexy::op<op_band>, Expr rhs) { return CallExpr{"&", move_vec(std::move(lhs), std::move(rhs))}; },
+
+        [](Expr lhs, lexy::op<op_bor>, Expr rhs) { return CallExpr{"|", move_vec(std::move(lhs), std::move(rhs))}; }
     );
 };
 
