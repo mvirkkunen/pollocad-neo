@@ -64,6 +64,7 @@ struct VarExpr {
 struct LetExpr {
     std::string name;
     ExprPtr value;
+    bool return_;
     Span span;
 
     bool operator==(const LetExpr&) const = default;

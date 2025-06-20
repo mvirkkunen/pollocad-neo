@@ -127,7 +127,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     context->messages().push_back(LogMessage{LogMessage::Level::Error, std::format("'{}' is already defined", ex.name), ex.span});
                 }
 
-                return undefined;
+                return ex.return_ ? val : undefined;
             } else if constexpr (std::is_same_v<T, ast::CallExpr>) {
                 bool error = false;
 

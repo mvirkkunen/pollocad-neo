@@ -504,10 +504,26 @@ struct stmt_def {
 };
 
 struct stmt_let {
+    struct non_returning_operator_ {
+        static constexpr auto rule = dsl::equal_sign;
+        static constexpr auto value = lexy::constant(false);
+    };
+
+    struct returning_operator_ {
+        static constexpr auto rule = dsl::colon >> dsl::equal_sign;
+        static constexpr auto value = lexy::constant(true);
+    };
+
+    struct operator_ {
+        static constexpr auto name = "assignment operator";
+        static constexpr auto rule = dsl::p<returning_operator_> | dsl::else_ >> dsl::p<non_returning_operator_>;
+        static constexpr auto value = lexy::forward<bool>;
+    };
+
     static constexpr auto name = "assignment statement";
-    static constexpr auto rule = dsl::peek(dsl::p<ident> + ws + dsl::equal_sign) >> dsl::position(dsl::p<ident>) + dsl::position + dsl::equal_sign + dsl::p<expr> + dsl::semicolon;
+    static constexpr auto rule = dsl::peek(dsl::p<ident> + ws + dsl::p<operator_>) >> dsl::position(dsl::p<ident>) + dsl::position + dsl::p<operator_> + dsl::p<expr> + dsl::semicolon;
     static constexpr auto value = lexy::callback_with_state<Expr>(
-        [](ParseState &st, Pos begin, std::string name, Pos end, Expr ex) { return LetExpr{std::move(name), std::move(ex), st.span(begin, end)}; }
+        [](ParseState &st, Pos begin, std::string name, Pos end, bool return_, Expr ex) { return LetExpr{std::move(name), std::move(ex), return_, st.span(begin, end)}; }
     );
 };
 
