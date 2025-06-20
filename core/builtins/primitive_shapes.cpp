@@ -77,7 +77,7 @@ Value builtin_cyl(const CallContext &c) {
 
     const auto location = parseShapeLocation(c, defaultAnchor);
 
-    if (r1 <= Precision::Confusion() || r2 <= Precision::Confusion() || h <= Precision::Confusion()) {
+    if ((r1 <= Precision::Confusion() && r2 <= Precision::Confusion()) || h <= Precision::Confusion()) {
         return undefined;
     }
 
