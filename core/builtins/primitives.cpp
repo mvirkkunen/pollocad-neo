@@ -114,18 +114,23 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
 }
 
 Value builtin_index(const CallContext &c) {
-    auto alist = c.get<List>(0, false);
-    if (alist) {
-        auto aindex = c.get<double>(1, false);
-        if (aindex) {
-            size_t index = static_cast<size_t>(*aindex);
-            return (index < alist->size()) ? (*alist)[index] : undefined;
-        }
+    auto pval = c.get(0);
+    if (!pval) {
+        return c.error("malformed indexing operation (no value to index)");
+    }
 
-        auto aname = c.get<std::string>(1, false);
-        if (aname) {
+    auto pindex = c.get(1);
+    if (!pindex) {
+        return c.error("malformed indexing operation (missing index value)");
+    }
+
+    if (auto plist = pval->as<List>()) {
+        if (auto pnum = pindex->as<double>()) {
+            size_t index = static_cast<size_t>(*pnum);
+            return (index < plist->size()) ? (*plist)[index] : undefined;
+        } else if (auto pstr = pindex->as<std::string>()) {
             std::vector<Value> result;
-            for (const char ch : *aname) {
+            for (const char ch : *pstr) {
                 ssize_t index = -1;
                 switch (ch) {
                     case 'x': case 'r': index = 0; break;
@@ -135,10 +140,10 @@ Value builtin_index(const CallContext &c) {
                 }
 
                 if (index == -1) {
-                    return c.error(std::format("Invalid swizzle access: .{}", *aname));
+                    return c.error(std::format("Invalid swizzle access: .{}", *pstr));
                 }
 
-                result.push_back(index < alist->size() ? (*alist)[index] : undefined);
+                result.push_back(index < plist->size() ? (*plist)[index] : undefined);
             }
 
             if (result.size() == 1) {
@@ -146,27 +151,63 @@ Value builtin_index(const CallContext &c) {
             }
 
             return result;
+        } else {
+            return c.error(std::format("cannot index list with value of type {}", pindex->type()));
         }
-
-        return c.error("invalid type of index for indexing a list");
-    }
-
-    auto astring = c.get<std::string>(0, false);
-    if (astring) {
-        auto aindex = c.get<double>(1);
-        if (aindex) {
-            size_t index = static_cast<size_t>(*aindex);
-            return (index < astring->size()) ? Value{std::string(1, (*astring).at(index))} : undefined;
+    } else if (auto pstring = pval->as<std::string>()) {
+        if (auto pnum = pindex->as<double>()) {
+            size_t index = static_cast<size_t>(*pnum);
+            return (index < pstring->size()) ? Value{std::string(1, (*pstring).at(index))} : undefined;
+        } else {
+            return c.error(std::format("cannot index string with value of type {}", pindex->type()));
         }
-
-        return undefined;
+    } else {
+        return c.error(std::format("Cannot index value of type {}", pval->type()));
     }
-
-    return c.error("Cannot index value of this type");
 }
 
 Value builtin_list(const CallContext &c) {
     return c.positional();
+}
+
+Value builtin_concat(const CallContext &c) {
+    auto it = c.positional().cbegin();
+    auto end = c.positional().cend();
+    if (it == end) {
+        return undefined;
+    }
+
+    if (it->as<List>()) {
+        List result;
+
+        for (; it != end; it++) {
+            if (it->undefined()) {
+                continue;
+            } else if (auto plist = it->as<List>()) {
+                std::copy(plist->cbegin(), plist->cend(), std::back_inserter(result));
+            } else {
+                return c.error(std::format("concat arguments must all be of the same type or undefined (found list, then {})", it->type()));
+            }
+        }
+
+        return result;
+    } else if (it->as<std::string>()) {
+        std::string result;
+
+        for (; it != end; it++) {
+            if (it->undefined()) {
+                continue;
+            } else if (auto pstr = it->as<std::string>()) {
+                result += *pstr;
+            } else {
+                return c.error(std::format("concat arguments must all be of the same type or undefined (found string, then {})", it->type()));
+            }
+        }
+
+        return result;
+    } else {
+        return c.error(std::format("cannot concat values of type {}", it->type()));
+    }
 }
 
 Value builtin_type(const CallContext &c) {
@@ -237,6 +278,7 @@ void add_builtins_primitives(Environment &env) {
     env.setFunction("if", builtin_if);
 
     env.setFunction("list", builtin_list);
+    env.setFunction("concat", builtin_concat);
     env.setFunction("str", builtin_str);
     env.setFunction("type", builtin_type);
     env.setFunction("echo", builtin_echo);

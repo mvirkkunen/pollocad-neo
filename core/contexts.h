@@ -46,9 +46,8 @@ public:
         }
 
         auto tv = v->as<T>();
-        if (!tv) {
+        if (!tv && typeError) {
             warning(std::format("parameter {}: expected {}, got {}", index + 1, Value::typeName<T>(), v->type()));
-            return nullptr;
         }
 
         return tv;
@@ -62,9 +61,8 @@ public:
         }
 
         auto tv = v->as<T>();
-        if (!tv) {
+        if (!tv && typeError) {
             warning(std::format("parameter {}: expected {}, got {}", name, Value::typeName<T>(), v->type()));
-            return nullptr;
         }
 
         return tv;
