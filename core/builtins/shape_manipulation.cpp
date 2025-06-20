@@ -18,7 +18,7 @@ Value builtin_move(const CallContext &c) {
     }
 
     gp_Trsf trsf;
-    trsf.SetTranslation(parseVec(c, 0.0));
+    trsf.SetTranslation(parseXYZ(c, 0.0));
 
     ShapeList result;
     for (const auto &c : children) {
@@ -34,7 +34,7 @@ Value builtin_rot(const CallContext &c) {
         return undefined;
     }
 
-    auto v = parseVec(c, 0.0);
+    auto v = parseXYZ(c, 0.0);
 
     gp_Trsf trsf;
     if (v.X() != 0.0) {
@@ -48,8 +48,28 @@ Value builtin_rot(const CallContext &c) {
     }
 
     ShapeList result;
-    for (const auto &c : children) {
-        result.push_back(c.withShape(c.shape().Moved(trsf)));
+    for (const auto &ch : children) {
+        result.push_back(ch.withShape(ch.shape().Moved(trsf)));
+    }
+
+    return result;
+}
+
+Value builtin_orient(const CallContext &c) {
+    const auto location = parseShapeLocation(c, gp_XYZ{-1.0, -1.0, -1.0});
+
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto bbox = getBoundingBox(children);
+
+    ShapeList result;
+    for (const auto &ch : children) {
+        TopoDS_Shape shape = ch.shape();
+        location.apply(shape, bbox.CornerMax().XYZ() - bbox.CornerMin().XYZ());
+        result.push_back(ch.withShape(shape));
     }
 
     return result;
@@ -249,6 +269,7 @@ Value builtin_for(const CallContext &c) {
 void add_builtins_shape_manipulation(Environment &env) {
     env.setFunction("move", builtin_move);
     env.setFunction("rot", builtin_rot);
+    env.setFunction("orient", builtin_orient);
     env.setFunction("tag", builtin_tag);
     env.setFunction("remove", builtin_remove);
     env.setFunction("prop", builtin_prop);

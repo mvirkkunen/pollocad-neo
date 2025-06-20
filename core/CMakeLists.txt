@@ -1,3 +1,6 @@
+set(POLLO_STL "${CMAKE_CURRENT_SOURCE_DIR}/Chicken_by_MartinSivecky_892445.stl")
+set(POLLO_HEX "${CMAKE_CURRENT_BINARY_DIR}/generated_inc/generated/pollo.hex")
+
 add_library(PollocadCore
     parser.h parser.cpp
     ast.h ast.cpp
@@ -16,6 +19,7 @@ target_include_directories(PollocadCore
     PUBLIC
         ../lexy/include
         /home/matti/devel/OCCT/build/include/opencascade
+        ${CMAKE_CURRENT_BINARY_DIR}/generated_inc
         .)
 
 target_link_directories(PollocadCore PUBLIC /home/matti/devel/OCCT/build/lin64/gcc/libi)
@@ -33,3 +37,17 @@ target_link_libraries(PollocadCore
         TKTopAlgo
         TKV3d
 )
+
+find_program(XXD_COMMAND NAMES xxd)
+
+if(NOT XXD_COMMAND)
+    message(FATAL_ERROR "xxd not found")
+endif()
+
+add_custom_command(
+    OUTPUT "${POLLO_HEX}"
+    COMMAND "${XXD_COMMAND}" -i < "${POLLO_STL}" > "${POLLO_HEX}"
+    MAIN_DEPENDENCY "${POLLO_STL}"
+)
+add_custom_target(PolloStl DEPENDS "${POLLO_HEX}")
+add_dependencies(PollocadCore PolloStl)
