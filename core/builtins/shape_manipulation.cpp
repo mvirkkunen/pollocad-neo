@@ -276,12 +276,16 @@ Value builtin_bounds(const CallContext &c) {
     }
 
     return List{
-        result.CornerMin().X(),
-        result.CornerMin().Y(),
-        result.CornerMin().Z(),
-        result.CornerMax().X(),
-        result.CornerMax().Y(),
-        result.CornerMax().Z(),
+        List{
+            result.CornerMin().X(),
+            result.CornerMin().Y(),
+            result.CornerMin().Z(),
+        },
+        List{
+            result.CornerMax().X(),
+            result.CornerMax().Y(),
+            result.CornerMax().Z(),
+        }
     };
 }
 
