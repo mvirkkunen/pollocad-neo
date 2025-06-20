@@ -9,6 +9,7 @@
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
+#include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <RWStl.hxx>
@@ -60,25 +61,35 @@ Value builtin_box(const CallContext &c) {
 
 Value builtin_cyl(const CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{0.0, 0.0, -1.0};
+
+    auto pr1 = c.get<double>("r1");
+    auto pr2 = c.get<double>("r2");
+    auto pd1 = c.get<double>("d1");
+    auto pd2 = c.get<double>("d2");
     auto pr = c.get<double>("r");
     auto pd = c.get<double>("d");
-    double r = pr ? *pr : pd ? *pd : 1.0;
+
+    double r1 = pr1 ? *pr1 : pd1 ? *pd1 * 0.5 : pr ? *pr : pd ? *pd * 0.5 : 1.0;
+    double r2 = pr2 ? *pr2 : pd2 ? *pd2 * 0.5 : pr ? *pr : pd ? *pd * 0.5 : 1.0;
 
     auto ph = c.get<double>("h");
     double h = ph ? *ph : 1.0;
 
     const auto location = parseShapeLocation(c, defaultAnchor);
 
-    if (pr && pd) {
-        c.warning("Both r and d defined for cylinder - using r");
-    }
-
-    if (r <= Precision::Confusion() || h <= Precision::Confusion()) {
+    if (r1 <= Precision::Confusion() || r2 <= Precision::Confusion() || h <= Precision::Confusion()) {
         return undefined;
     }
 
-    auto shape = BRepPrimAPI_MakeCylinder{r, h}.Shape();
-    location.apply(shape, gp_XYZ{r * 2.0, r * 2.0, h});
+    TopoDS_Shape shape;
+    if (r1 == r2) {
+        shape = BRepPrimAPI_MakeCylinder{r1, h}.Shape();
+    } else {
+        shape = BRepPrimAPI_MakeCone{r1, r2, h}.Shape();
+    }
+
+    double d = std::max(r1, r2) * 2.0;
+    location.apply(shape, gp_XYZ{d, d, h});
     return addShapeChildren(c, ShapeList{Shape{shape, c.span()}});
 }
 
@@ -171,8 +182,13 @@ TopoDS_Shape loadPollo() {
 }
 
 Value builtin_pollo(const CallContext &c) {
+    static const auto defaultAnchor = gp_XYZ{0.0, 0.0, -1.0};
     static auto pollo = loadPollo();
-    return ShapeList{Shape{pollo, c.span()}};
+    const auto location = parseShapeLocation(c, defaultAnchor);
+
+    auto shape = pollo;
+    location.apply(shape, gp_XYZ{67.9, 124.11, 132.08});
+    return addShapeChildren(c, ShapeList{Shape{shape, c.span()}});
 }
 
 }

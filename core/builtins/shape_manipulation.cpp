@@ -264,6 +264,27 @@ Value builtin_for(const CallContext &c) {
     return result;
 }
 
+Value builtin_bounds(const CallContext &c) {
+    Bnd_Box result;
+
+    result.Add(getBoundingBox(c.children()));
+    
+    for (const auto &arg : c.positional()) {
+        if (const auto pshape = arg.as<ShapeList>()) {
+            result.Add(getBoundingBox(*pshape));
+        }
+    }
+
+    return List{
+        result.CornerMin().X(),
+        result.CornerMin().Y(),
+        result.CornerMin().Z(),
+        result.CornerMax().X(),
+        result.CornerMax().Y(),
+        result.CornerMax().Z(),
+    };
+}
+
 }
 
 void add_builtins_shape_manipulation(Environment &env) {
@@ -275,6 +296,7 @@ void add_builtins_shape_manipulation(Environment &env) {
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("for", builtin_for);
+    env.setFunction("bounds", builtin_bounds);
 }
 
 

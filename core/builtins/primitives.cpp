@@ -114,15 +114,15 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
 }
 
 Value builtin_index(const CallContext &c) {
-    auto alist = c.get<List>(0);
+    auto alist = c.get<List>(0, false);
     if (alist) {
-        auto aindex = c.get<double>(1);
+        auto aindex = c.get<double>(1, false);
         if (aindex) {
             size_t index = static_cast<size_t>(*aindex);
             return (index < alist->size()) ? (*alist)[index] : undefined;
         }
 
-        auto aname = c.get<std::string>(1);
+        auto aname = c.get<std::string>(1, false);
         if (aname) {
             std::vector<Value> result;
             for (const char ch : *aname) {
@@ -148,10 +148,10 @@ Value builtin_index(const CallContext &c) {
             return result;
         }
 
-        return c.error("Invalid type of index for indexing a list");
+        return c.error("invalid type of index for indexing a list");
     }
 
-    auto astring = c.get<std::string>(0);
+    auto astring = c.get<std::string>(0, false);
     if (astring) {
         auto aindex = c.get<double>(1);
         if (aindex) {
@@ -159,7 +159,7 @@ Value builtin_index(const CallContext &c) {
             return (index < astring->size()) ? Value{std::string(1, (*astring).at(index))} : undefined;
         }
 
-        return c.error("Invalid type of index for indexing a string");
+        return undefined;
     }
 
     return c.error("Cannot index value of this type");
