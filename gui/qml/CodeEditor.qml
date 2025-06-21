@@ -78,10 +78,6 @@ Item {
             }
         }
 
-        Text {
-            text: code.cursorPosition + " " + code.selectionStart + " " + code.selectionEnd
-        }
-
         TextArea.flickable: TextArea {
             id: code
             leftPadding: lineNumberWidth + 20
