@@ -207,7 +207,7 @@ Value builtin_for(const CallContext &c) {
     };
 
     if (c.positional().size() == 1) {
-        const auto plist = c.get<List>(0);
+        const auto plist = c.get<ValueList>(0);
         if (!plist) {
             return c.error("attempted to for loop over something that is not a list");
         }
@@ -275,17 +275,17 @@ Value builtin_bounds(const CallContext &c) {
         }
     }
 
-    return List{
-        List{
+    return ValueList{
+        ValueList{
             result.CornerMin().X(),
             result.CornerMin().Y(),
             result.CornerMin().Z(),
         },
-        List{
+        ValueList{
             result.CornerMax().X(),
             result.CornerMax().Y(),
             result.CornerMax().Z(),
-        }
+        },
     };
 }
 

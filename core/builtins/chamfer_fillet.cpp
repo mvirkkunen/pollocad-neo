@@ -72,9 +72,9 @@ Value builtin_chamfer_filler(const CallContext &c) {
     ShapeList result;
     std::vector<EdgeFilters> filters;
 
-    if (auto plist = plistOrSpec->as<List>()) {
+    if (auto plist = plistOrSpec->as<ValueList>()) {
         for (const auto &spec : *plist) {
-            if (const auto ppair = spec.as<List>()) {
+            if (const auto ppair = spec.as<ValueList>()) {
                 if (ppair->size() == 0 || ppair->size() > 2) {
                     c.warning(std::format("Invalid edge specification pair: {}", spec.display()));
                     continue;

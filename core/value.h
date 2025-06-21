@@ -46,11 +46,11 @@ class CallContext;
 using FunctionImpl = std::function<Value(const CallContext&)>;
 using Function = std::shared_ptr<FunctionImpl>;
 
-using List = std::vector<Value>;
+using ValueList = std::vector<Value>;
 
 class Value {
 private:
-    using Variant = std::variant<Undefined, double, std::string, ShapeList, Function, List>;
+    using Variant = std::variant<Undefined, double, std::string, ShapeList, Function, ValueList>;
     Variant v;
 
 public:
@@ -61,7 +61,7 @@ public:
     constexpr Value(int v) : v(static_cast<double>(v)) { }
     constexpr Value(const std::string v) : v(v) { }
     constexpr Value(ShapeList v) : v(v) { }
-    constexpr Value(List v) : v(v) { }
+    constexpr Value(ValueList v) : v(v) { }
     Value(Function v) : v(v) { }
 
     template <typename T>

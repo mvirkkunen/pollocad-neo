@@ -51,7 +51,7 @@ gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval
         return default_;
     }
 
-    auto plist = pval->as<List>();
+    auto plist = pval->as<ValueList>();
     if (!plist) {
         c.warning(std::format("invalid {} (not a list): {}", name, pval->display()));
         return default_;
@@ -83,7 +83,7 @@ gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value
     }
 
     gp_XYZ r{};
-    if (pval->as<List>()) {
+    if (pval->as<ValueList>()) {
         r = parseVec(c, name, pval, default_);
     } else if (auto pdir = pval->as<std::string>()) {
         const auto &dir = *pdir;
@@ -110,7 +110,7 @@ gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value
 gp_XYZ parseXYZ(const CallContext &c, double default_) {
     gp_XYZ vec{default_, default_, default_};
 
-    if (auto l = c.get<List>(0)) {
+    if (auto l = c.get<ValueList>(0)) {
         for (int i = 0; i < l->size() && i < 3; i++) {
             if (auto n = (*l)[i].as<double>()) {
                 vec.SetCoord(i + 1, *n);

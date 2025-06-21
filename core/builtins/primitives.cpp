@@ -41,8 +41,8 @@ auto builtin_un_op(std::function<double(double)> op) {
 
         if (auto *pna = a->as<double>()) {
             return op(*pna);
-        } else if (auto *pla = a->as<List>()) {
-            List result;
+        } else if (auto *pla = a->as<ValueList>()) {
+            ValueList result;
             result.reserve(pla->size());
 
             for (int i = 0; i < pla->size(); i++) {
@@ -80,9 +80,9 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
             } else {
                 return c.error("both operands must be either numbers or lists");
             }
-        } else if (auto *pla = a->as<List>()) {
-            if (auto *plb = b->as<List>()) {
-                List result;
+        } else if (auto *pla = a->as<ValueList>()) {
+            if (auto *plb = b->as<ValueList>()) {
+                ValueList result;
                 result.reserve(pla->size());
 
                 for (int i = 0; i < pla->size(); i++) {
@@ -124,7 +124,7 @@ Value builtin_index(const CallContext &c) {
         return c.error("malformed indexing operation (missing index value)");
     }
 
-    if (auto plist = pval->as<List>()) {
+    if (auto plist = pval->as<ValueList>()) {
         if (auto pnum = pindex->as<double>()) {
             size_t index = static_cast<size_t>(*pnum);
             return (index < plist->size()) ? (*plist)[index] : undefined;
@@ -177,13 +177,13 @@ Value builtin_concat(const CallContext &c) {
         return undefined;
     }
 
-    if (it->as<List>()) {
-        List result;
+    if (it->as<ValueList>()) {
+        ValueList result;
 
         for (; it != end; it++) {
             if (it->undefined()) {
                 continue;
-            } else if (auto plist = it->as<List>()) {
+            } else if (auto plist = it->as<ValueList>()) {
                 std::copy(plist->cbegin(), plist->cend(), std::back_inserter(result));
             } else {
                 return c.error(std::format("concat arguments must all be of the same type or undefined (found list, then {})", it->type()));

@@ -59,7 +59,7 @@ private slots:
 
         QTest::newRow("list") //
             << "[1, 2]"
-            << Value{List{1.0, 2.0}};
+            << Value{ValueList{1.0, 2.0}};
 
         QTest::newRow("if_true") //
             << "if 1 { 1 } else { 2 }"
@@ -83,7 +83,7 @@ private slots:
 
         QTest::newRow("list_swizzle") //
             << "[1, 2, 3].yzx"
-            << Value{List{2.0, 3.0, 1.0}};
+            << Value{ValueList{2.0, 3.0, 1.0}};
 
         QTest::newRow("def_none") //
             << "def pollo() { 1 } pollo();"
