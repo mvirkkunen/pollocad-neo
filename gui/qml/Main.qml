@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Fusion
 import QtQuick.Layouts
-import pollocad
+import pollocadgui
 
 ApplicationWindow {
     property bool shapeOutOfDate: false
@@ -43,6 +43,7 @@ ApplicationWindow {
             SplitView.preferredWidth: 600
 
             text: loadedCode
+            highlightedSpans: occtView.hoveredSpans
 
             onCodeChanged: {
                 executor.execute(code.text);
@@ -70,8 +71,9 @@ ApplicationWindow {
                 SplitView.preferredHeight: 700
 
                 OcctView {
-                    id: viewer
+                    id: occtView
                     anchors.fill: parent
+                    hoveredPosition: code.hoveredPosition
                 }
 
                 BusyIndicator {
@@ -103,15 +105,20 @@ ApplicationWindow {
 
                     visible: shapeOutOfDate
                 }
+
+                Text {
+                    x: 50
+                    y: 50
+                }
             }
 
             ColumnLayout {
                 RowLayout {
                     Switch {
                         text: "Show '#' highlights"
-                        checked: viewer.showHighlightedShapes
+                        checked: occtView.showHighlightedShapes
                         onClicked: {
-                            viewer.showHighlightedShapes = checked;
+                            occtView.showHighlightedShapes = checked;
                         }
                     }
                 }
@@ -165,8 +172,6 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        highlighter.setTextDocument(code.textDocument);
-        highlighter.setOcctView(viewer);
         executor.execute(code.text);
     }
 
@@ -174,8 +179,8 @@ ApplicationWindow {
         target: executor
 
         function onResult(res) {
-            viewer.setResult(res);
-            highlighter.setResult(res);
+            occtView.setResult(res);
+            code.setResult(res);
             messages.model = res.messagesModel();
             shapeOutOfDate = !res.hasShapes;
         }

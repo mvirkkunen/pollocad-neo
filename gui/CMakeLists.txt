@@ -5,9 +5,9 @@ qt_add_executable(PollocadGui
 )
 
 qt_add_qml_module(PollocadGui
-    URI pollocad
+    URI pollocadgui
     VERSION 1.0
-    SOURCES src/occtview.h src/occtview.cpp src/codetextarea.h src/codetextarea.cpp src/backgroundexecutor.h src/backgroundexecutor.cpp
+    SOURCES src/spanobj.h src/occtview.h src/occtview.cpp src/codedecorator.h src/codedecorator.cpp src/backgroundexecutor.h src/backgroundexecutor.cpp
     QML_FILES qml/Main.qml qml/CodeEditor.qml
     RESOURCES res/icon.png
 )

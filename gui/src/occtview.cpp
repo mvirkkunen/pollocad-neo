@@ -1,6 +1,7 @@
 #include <atomic>
 
 #include "occtview.h"
+#include "backgroundexecutor.h"
 
 #include <QRunnable>
 
@@ -37,7 +38,7 @@ public:
     bool isHighlight = false;
     bool isHovered = false;
     bool willUnhover = false;
-    std::vector<Span> spans;
+    QList<SpanObj> spans;
 };
 
 class OcctRenderer : public QObject, public AIS_ViewController {
@@ -48,17 +49,18 @@ public:
 
     void setParent(QQuickItem *parent) { m_parent = parent; }
     void setResult(BackgroundExecutorResult *result);
-    void setHoveredPosition(int position);
-    void updateView();
 
-    bool showHighlightedShapes() const { return m_showHighlightedShapes; }
+    void setHoveredPosition(int position);
     void setShowHighlightedShapes(bool show);
 
     void wheelEvent(int delta);
     void mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
 
+    void updateView();
+    void updateHoveredSpans();
+
 signals:
-    void spanHovered(int spanBegin, int spanEnd, bool hovered);
+    void hoveredSpansChanged(QList<SpanObj> spans);
 
 public slots:
     void init();
@@ -74,7 +76,7 @@ private:
     Handle(AIS_InteractiveContext) m_interactiveContext;
     Handle(AIS_ViewCube) m_viewCube;
     std::vector<Handle(AIS_Shape)> m_shapes;
-    std::atomic_bool m_showHighlightedShapes = true;
+    bool m_showHighlightedShapes = true;
 };
 
 OcctView::OcctView()
@@ -89,18 +91,19 @@ void OcctView::setResult(BackgroundExecutorResult *result) {
 }
 
 void OcctView::setHoveredPosition(int position) {
-    scheduleRenderJob([this, position] { if (m_renderer) { m_renderer->setHoveredPosition(position); } });
-}
-
-bool OcctView::showHighlightedShapes() const {
-    return m_renderer ? m_renderer->showHighlightedShapes() : true;
+    if (position != m_hoveredPosition) {
+        m_hoveredPosition = position;
+        emit hoveredPositionChanged();
+        scheduleRenderJob([this, position] { if (m_renderer) { m_renderer->setHoveredPosition(position); } });
+    }
 }
 
 void OcctView::setShowHighlightedShapes(bool show) {
-    m_renderer->setShowHighlightedShapes(show);
-    emit showHighlightedShapesChanged();
-
-    scheduleRenderJob([show, this]() { m_renderer->updateView(); });
+    if (show != m_showHighlightedShapes) {
+        m_showHighlightedShapes = true;
+        emit showHighlightedShapesChanged();
+        scheduleRenderJob([show, this]() { m_renderer->setShowHighlightedShapes(show); });
+    }
 }   
 
 void OcctView::mousePressEvent(QMouseEvent *ev)
@@ -152,9 +155,12 @@ void OcctView::sync() {
         m_renderer = new OcctRenderer();
         connect(window(), &QQuickWindow::beforeRendering, m_renderer, &OcctRenderer::init, Qt::DirectConnection);
         connect(window(), &QQuickWindow::beforeRenderPassRecording, m_renderer, &OcctRenderer::paint, Qt::DirectConnection);
-        connect(m_renderer, &OcctRenderer::spanHovered, this, [this](int begin, int end, bool hovered) {
-            emit spanHovered(begin, end, hovered);
-        });
+        connect(m_renderer, &OcctRenderer::hoveredSpansChanged, this, [this](QList<SpanObj> hoveredSpans) {
+            if (hoveredSpans != m_hoveredSpans) {
+                m_hoveredSpans = hoveredSpans;
+                emit hoveredSpansChanged();
+            }
+        }, Qt::QueuedConnection);
     }
 
     m_renderer->setParent(this);
@@ -194,10 +200,6 @@ void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::Keyboar
     UpdateMousePosition(posv, vkeymouse, vkeyflags, false);
     UpdateMouseButtons(posv, vkeymouse, vkeyflags, false);
 
-    //m_interactiveContext->MoveTo(posv.x(), posv.y(), m_view, false);
-    //std::cerr << "detected: "  <<m_interactiveContext->HasDetectedShape() << "\n";
-    //m_interactiveContext->SelectDetected();
-
     for (const auto &sh : m_shapes) {
         auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
         owner->willUnhover = owner->isHovered;
@@ -210,10 +212,6 @@ void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::Keyboar
 
                 if (!owner->isHovered) {
                     owner->isHovered = true;
-
-                    for (const auto &span : owner->spans) {
-                        emit spanHovered(span.begin, span.end, true);
-                    }
                 }
             }
         }
@@ -223,12 +221,10 @@ void OcctRenderer::mouseEvent(QPointF pos, Qt::MouseButtons buttons, Qt::Keyboar
         auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
         if (owner->willUnhover) {
             owner->isHovered = false;
-
-            for (const auto &span : owner->spans) {
-                emit spanHovered(span.begin, span.end, false);
-            }
         }
     }
+
+    updateHoveredSpans();
 }
 
 void OcctRenderer::wheelEvent(int delta)
@@ -365,14 +361,6 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
     bool center = m_shapes.empty();
 
     for (const auto &sh : m_shapes) {
-        auto owner = Handle(ShapeOwner)::DownCast(sh->GetOwner());
-
-        if (owner->isHovered) {
-            for (const auto &span : owner->spans) {
-                emit spanHovered(span.begin, span.end, false);
-            }
-        }
-        
         m_interactiveContext->Remove(sh, false);
     }
 
@@ -380,7 +368,7 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
 
     for (const auto &sh : *result->shapes()) {
         Handle(ShapeOwner) owner = new ShapeOwner();
-        owner->spans = sh.spans();
+        std::transform(sh.spans().cbegin(), sh.spans().cend(), std::back_inserter(owner->spans), [](const auto &s) { return SpanObj(s); });
 
         Handle(AIS_Shape) aisShape = new AIS_Shape(sh.shape());
         aisShape->Attributes()->SetFaceBoundaryDraw(true);
@@ -420,8 +408,12 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
 }
 
 void OcctRenderer::setHoveredPosition(int position) {
+    QList<SpanObj> hoveredSpans;
     for (const auto &aisShape : m_shapes) {
         auto owner = Handle(ShapeOwner)::DownCast(aisShape->GetOwner());
+        if (owner->isHovered) {
+            hoveredSpans.append(owner->spans);
+        }
 
         bool match = false;
         for (const auto &span : owner->spans) {
@@ -433,10 +425,6 @@ void OcctRenderer::setHoveredPosition(int position) {
 
         if (match != owner->isHovered) {
             owner->isHovered = match;
-
-            for (const auto &span : owner->spans) {
-                emit spanHovered(span.begin, span.end, owner->isHovered);
-            }
 
             if (m_showHighlightedShapes || !owner->isHighlight) {
                 Handle(Prs3d_LineAspect) line = new Prs3d_LineAspect(owner->isHovered ? Quantity_NOC_WHITE : Quantity_NOC_BLACK, Aspect_TOL_SOLID, 2.0);
@@ -451,6 +439,8 @@ void OcctRenderer::setHoveredPosition(int position) {
     }
 
     m_view->Invalidate();
+
+    updateHoveredSpans();
 }
 
 void OcctRenderer::setShowHighlightedShapes(bool show) {
@@ -469,6 +459,19 @@ void OcctRenderer::updateView() {
     }
 
     m_view->Invalidate();
+
+    updateHoveredSpans();
+}
+
+void OcctRenderer::updateHoveredSpans() {
+    QList<SpanObj> hoveredSpans;
+    for (const auto &aisShape : m_shapes) {
+        auto owner = Handle(ShapeOwner)::DownCast(aisShape->GetOwner());
+        if (owner->isHovered) {
+            hoveredSpans.append(owner->spans);
+        }
+    }
+    emit hoveredSpansChanged(hoveredSpans);
 }
 
 #include "occtview.moc"

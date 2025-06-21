@@ -4,8 +4,9 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 
-#include "backgroundexecutor.h"
+#include "spanobj.h"
 
+class BackgroundExecutorResult;
 class OcctRenderer;
 
 class OcctView : public QQuickItem
@@ -14,18 +15,26 @@ class OcctView : public QQuickItem
     QML_ELEMENT
 
     Q_PROPERTY(bool showHighlightedShapes READ showHighlightedShapes WRITE setShowHighlightedShapes NOTIFY showHighlightedShapesChanged)
+    Q_PROPERTY(int hoveredPosition READ hoveredPosition WRITE setHoveredPosition NOTIFY hoveredPositionChanged);
+    Q_PROPERTY(QList<SpanObj> hoveredSpans READ hoveredSpans NOTIFY hoveredSpansChanged)
 
 public:
     OcctView();
 
     Q_INVOKABLE void setResult(BackgroundExecutorResult *result);
-    Q_INVOKABLE void setHoveredPosition(int position);
-    bool showHighlightedShapes() const;
+
+    int hoveredPosition() const { return m_hoveredPosition; }
+    void setHoveredPosition(int position);
+
+    QList<SpanObj> hoveredSpans() const { return m_hoveredSpans; }
+
+    bool showHighlightedShapes() const { return m_showHighlightedShapes; }
     void setShowHighlightedShapes(bool show);
 
 signals:
     void showHighlightedShapesChanged();
-    void spanHovered(int spanBegin, int spanEnd, bool hovered);
+    void hoveredPositionChanged();
+    void hoveredSpansChanged();
 
 protected:
     void mousePressEvent(QMouseEvent *ev) override;
@@ -45,6 +54,9 @@ private:
     void releaseResources() override;
 
     OcctRenderer *m_renderer = nullptr;
+    int m_hoveredPosition = -1;
+    QList<SpanObj> m_hoveredSpans;
+    bool m_showHighlightedShapes = true;
 };
 
 #endif // OCCTVIEW_H

@@ -5,11 +5,15 @@ Item {
     property alias text: code.text
     property alias textDocument: code.textDocument
     property alias cursorPosition: code.cursorPosition
+    property alias highlightedSpans: decorator.highlightedSpans
+    property int hoveredPosition: -1
     property int lineNumberWidth: hiddenLineNumber.width * Math.max(Math.ceil(Math.log(code.lineCount + 1) / Math.LN10), 4)
 
     property string prevText: ""
 
     signal codeChanged()
+
+    id: root
 
     Flickable {
         id: flickable
@@ -75,9 +79,8 @@ Item {
         }
 
         TextArea.flickable: TextArea {
-            leftPadding: lineNumberWidth + 20
             id: code
-
+            leftPadding: lineNumberWidth + 20
             font.family: "Monospace"
 
             MouseArea {
@@ -86,10 +89,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: undefined
 
-                onPositionChanged: (ev) => {
-                    const pos = code.positionAt(ev.x, ev.y);
-                    viewer.setHoveredPosition(pos);
-                }
+                onPositionChanged: (ev) => root.hoveredPosition = code.positionAt(ev.x, ev.y);
             }
 
             onTextChanged: {
@@ -191,9 +191,18 @@ Item {
         }
     }
 
+    function setResult(result) {
+        decorator.setResult(result);
+    }
+
     function updateNow() {
         typingTimeout.stop();
         codeChanged();
+    }
+
+    CodeDecorator {
+        id: decorator
+        textDocument: code.textDocument
     }
 
     Shortcut {
