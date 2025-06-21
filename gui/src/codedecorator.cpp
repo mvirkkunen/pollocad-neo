@@ -5,6 +5,17 @@
 
 #include "codedecorator.h"
 
+namespace
+{
+
+int leadingSpaceCount(QString str) {
+    int spaces = 0;
+    for (; spaces < str.length() && str.at(spaces).isSpace(); spaces++) { }
+    return spaces;
+}
+
+}
+
 class SyntaxHighlighter : public QSyntaxHighlighter {
     Q_OBJECT
 
@@ -145,12 +156,12 @@ public:
             block = (info.direction == 1) ? block.next() : block.previous();
 
             data = reinterpret_cast<BlockData *>(block.userData());
-            brackets = &data->brackets;
+            brackets = data ? &data->brackets : nullptr;
 
             if (brackets) {
                 index = (info.direction == 1) ? 0 : brackets->size() - 1;
             }
-        } while (block != document()->end());
+        } while (block.isValid());
     }
 
 protected:
@@ -197,7 +208,11 @@ protected:
                 auto format = m_formats[formatIndex];
 
                 if (position == m_cursorBracketPosition || position == m_matchingBracketPosition) {
-                    format.setBackground(QColor::fromRgb(200, 255, 200));
+                    format.setBackground(QColor::fromRgb(0x80, 0xff, 0x80));
+                }
+
+                if (position == m_matchingBracketPosition) {
+                    format.setFontWeight(QFont::Bold);
                 }
 
                 setFormat(match.capturedStart(), match.capturedLength(), format);
@@ -366,6 +381,160 @@ void CodeDecorator::setCursorPosition(int position) {
 void CodeDecorator::setResult(BackgroundExecutorResult *result) {
     if (m_highlighter) {
         m_highlighter->setMessages(result->messages());
+    }
+}
+
+void CodeDecorator::adjustNumber(int dir) {
+    auto block = getBlockAt(cursorPosition());
+
+    const auto text = block.text();
+    const int cursor = std::max(cursorPosition(), 1);
+
+    int start = cursor - 1;
+    for (; start > 0; start--) {
+        QChar ch = text.at(start);
+        if (!(ch.isDigit() || ch == '.' || ch == '-')) {
+            break;
+        }
+    }
+
+    if (start > 0) {
+        start++;
+    }
+
+    if (start == cursor) {
+        return;
+    }
+
+    auto num = text.sliced(start, cursor - start);
+
+    int dot = num.indexOf(".");
+    if (dot != -1) {
+        num = num.removeAt(dot);
+        dot = num.length() - dot;
+    }
+
+    int intNum = num.toInt() + dir;
+    int idx = (intNum < 0) ? 1 : 0;
+    num = QString::number(intNum);
+
+    if (dot != -1) {
+        while (num.length() < dot + idx) {
+            num = num.sliced(0, idx) + "0" + num.sliced(idx);
+        }
+
+        num = num.insert(num.length() - dot, ".");
+    }
+
+    QTextCursor textCursor(block);
+    textCursor.setPosition(start);
+    textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, cursor);
+    textCursor.insertText(num);
+}
+
+bool CodeDecorator::handleReturn() {
+    auto block = getBlockAt(m_selectionStart);
+
+    const auto text = block.text();
+    if (text.isEmpty()) {
+        return false;
+    }
+
+    QString toInsert = "\n";
+
+    int spaces = leadingSpaceCount(text);
+    toInsert += text.sliced(0, spaces);
+
+    QChar last = text.at(text.length() - 1);
+    
+    int cursor = cursorPosition();
+    if (cursor == block.position() + text.length() && (last == '{' || last == '(' || last == '[')) {
+        toInsert += QString{' '}.repeated(m_indentSize);
+    }
+
+    QTextCursor textCursor(block);
+    textCursor.setPosition(m_selectionStart);
+    textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, m_selectionEnd - m_selectionStart);
+    textCursor.insertText(toInsert);
+
+    return true;
+}
+
+bool CodeDecorator::handleBackspace() {
+    auto block = getBlockAt(m_selectionStart);
+    if (m_selectionEnd != m_selectionStart) {
+        return false;
+    }
+
+    QTextCursor textCursor(block);
+    textCursor.setPosition(m_selectionStart);
+    textCursor.movePosition(QTextCursor::StartOfLine, QTextCursor::KeepAnchor);
+
+    if (textCursor.selectedText().isEmpty() || !textCursor.selectedText().trimmed().isEmpty()) {
+        return false;
+    }
+
+    textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, (textCursor.selectedText().length() - 1) / m_indentSize * m_indentSize);
+    textCursor.removeSelectedText();
+
+    return true;
+}
+
+bool CodeDecorator::handleTab(int dir) {
+    auto block = getBlockAt(m_selectionStart);
+    auto endBlock = getBlockAt(m_selectionEnd);
+
+    if (block == endBlock && dir > 0) {
+        QTextCursor textCursor(block);
+        textCursor.setPosition(m_selectionStart);
+        textCursor.movePosition(QTextCursor::StartOfLine, QTextCursor::KeepAnchor);
+
+        if (!textCursor.selectedText().trimmed().isEmpty()) {
+            textCursor.setPosition(m_selectionStart);
+            textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, m_selectionEnd - m_selectionStart);
+            textCursor.insertText(QString{' '}.repeated(m_indentSize));
+
+            return true;
+        }
+    }
+
+    while (true) {
+        adjustBlockIndent(block, dir);
+        if (block == endBlock) {
+            break;
+        }
+        block = block.next();
+    }
+
+    return true;
+}
+
+int CodeDecorator::handleHome() const {
+    auto block = getBlockAt(cursorPosition());
+    int cursor = cursorPosition() - block.position();
+    int spaces = leadingSpaceCount(block.text());
+
+    return block.position() + ((cursor == spaces) ? 0 : spaces);
+}
+
+QTextBlock CodeDecorator::getBlockAt(int pos) const {
+    return m_quickTextDocument ? m_quickTextDocument->textDocument()->findBlock(pos) : QTextBlock{};
+}
+
+void CodeDecorator::adjustBlockIndent(const QTextBlock &block, int dir) {
+    const auto text = block.text();
+    int spaces = leadingSpaceCount(text);
+
+    int newSpaces = std::max(0, ((dir < 0) ? (spaces - 1) : (spaces + m_indentSize)) / m_indentSize * m_indentSize);
+
+    QTextCursor textCursor(block);
+    textCursor.movePosition(QTextCursor::StartOfLine);
+
+    if (newSpaces < spaces) {
+        textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, spaces - newSpaces);
+        textCursor.removeSelectedText();
+    } else {
+        textCursor.insertText(QString{' '}.repeated(newSpaces - spaces));
     }
 }
 
