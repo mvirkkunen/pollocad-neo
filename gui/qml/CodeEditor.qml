@@ -135,10 +135,19 @@ Item {
                         ev.accepted = decorator.handleTab(-1);
                         break;
                     
-                    case Qt.Key_Home:
-                        code.cursorPosition = decorator.handleHome();
+                    case Qt.Key_Home: {
+                        const anchor = (code.cursorPosition == code.selectionStart) ? code.selectionEnd : code.selectionStart;
+                        const cursor = decorator.handleHome();
+
+                        if (ev.modifiers & Qt.ShiftModifier) {
+                            code.select(anchor, cursor);
+                        } else {
+                            code.cursorPosition = cursor;
+                        }
                         ev.accepted = true;
+
                         break;
+                    }
                 }
             }
         }
