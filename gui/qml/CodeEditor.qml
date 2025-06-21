@@ -203,6 +203,7 @@ Item {
     CodeDecorator {
         id: decorator
         textDocument: code.textDocument
+        cursorPosition: code.cursorPosition
     }
 
     Shortcut {
