@@ -84,7 +84,7 @@ struct UserFunction {
     Value operator()(const CallContext &c) {
         auto parentEnvPtr = parentEnv.lock();
         if (!parentEnvPtr) {
-            c.warning("parent environment disappeared");
+            c.warning("attempted to call an escaped function - this is not supported");
             return undefined;
         }
 
