@@ -75,6 +75,51 @@ void addHighlighted(ShapeList &shapes, const Value &value) {
     }
 }
 
+struct UserFunction {
+    std::shared_ptr<ExecutionContext> context;
+    std::weak_ptr<Environment> parentEnv;
+    ast::LambdaExpr expr;
+    std::unordered_map<std::string, Value> defaults;
+
+    Value operator()(const CallContext &c) {
+        auto parentEnvPtr = parentEnv.lock();
+        if (!parentEnvPtr) {
+            c.warning("parent environment disappeared");
+            return undefined;
+        }
+
+        auto env = std::shared_ptr<Environment>(new Environment(parentEnvPtr));
+
+        size_t i = 0;
+        for (const auto& val : c.positional()) {
+            if (i > expr.args.size()) {
+                return c.error(std::format("Too many arguments for function {}", expr.name));
+            }
+
+            env->set(expr.args[i].name, val);
+            i++;
+        }
+
+        for (const auto& [name, val] : c.named()) {
+            if (!name.starts_with("$")) {
+                if (defaults.find(name) == defaults.end()) {
+                    return c.error(std::format("Function {} does not take argument {}", expr.name, name));
+                }
+            }
+
+            env->set(name, val);
+        }
+
+        for (const auto &[name, value] : defaults) {
+            if (!env->isDefined(name)) {
+                env->set(name, value);
+            }
+        }
+
+        return eval(context, env, &*expr.body);
+    }
+};
+
 Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::Expr* expr) {
     if (context->isCanceled()) {
         return undefined;
@@ -209,38 +254,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     defaults.emplace(arg.name, val);
                 }
 
-                std::shared_ptr<ExecutionContext> context2 = context;
-                return Value{[context=context2, env, ex, defaults](const CallContext &c) -> Value {
-                    auto newEnv = std::make_shared<Environment>(env);
-
-                    size_t i = 0;
-                    for (const auto& val : c.positional()) {
-                        if (i > ex.args.size()) {
-                            return c.error(std::format("Too many arguments for function {}", ex.name));
-                        }
-
-                        newEnv->set(ex.args[i].name, val);
-                        i++;
-                    }
-
-                    for (const auto& [name, val] : c.named()) {
-                        if (!name.starts_with("$")) {
-                            if (defaults.find(name) == defaults.end()) {
-                                return c.error(std::format("Function {} does not take argument {}", ex.name, name));
-                            }
-                        }
-
-                        newEnv->set(name, val);
-                    }
-
-                    for (const auto &[name, value] : defaults) {
-                        if (!newEnv->isDefined(name)) {
-                            newEnv->set(name, value);
-                        }
-                    }
-
-                    return eval(context, newEnv, &*ex.body);
-                }};
+                return std::function<Value(const CallContext &)>{UserFunction{context, env, ex, defaults}};
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
