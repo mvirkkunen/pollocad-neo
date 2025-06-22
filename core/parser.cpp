@@ -130,7 +130,10 @@ struct expr_call {
     struct args_ {
         static constexpr const char *name = "function call arguments";
 
-        static constexpr auto rule = dsl::parenthesized.opt_list(dsl::opt(dsl::peek(dsl::p<ident> + ws + dsl::equal_sign) >> dsl::p<ident> + dsl::equal_sign) + dsl::p<expr>, dsl::sep(dsl::comma));
+        static constexpr auto rule = dsl::parenthesized.opt_list(
+            dsl::opt(dsl::peek(dsl::p<ident> + ws + dsl::not_followed_by(dsl::equal_sign, dsl::equal_sign)) >> dsl::p<ident> + dsl::equal_sign) + dsl::p<expr>,
+            dsl::sep(dsl::comma)
+        );
         static constexpr auto value = lexy::fold_inplace<CallExpr>(
             []() { return CallExpr{}; },
             [](auto& expr, lexy::nullopt, Expr value) { expr.positional.push_back(std::move(value)); },
