@@ -33,6 +33,11 @@ Value Shape::getProp(const std::string &name) const {
     return (it == m_props.end()) ? undefined : it->second;
 }
 
+Value Value::trueValue = Value::constructBool(true);
+Value Value::falseValue = Value::constructBool(false);
+
+Value::Value(bool v) : Value(v ? trueValue : falseValue) { }
+
 Value::Value(double v) {
     auto bits = std::rotl(~std::bit_cast<uint64_t>(v), c_rotate);
     if ((bits & 0x7) == 0) {
@@ -60,17 +65,15 @@ Value &Value::operator=(const Value &other) {
 }
 
 bool Value::truthy() const {
-    if (m_value == c_falseVal || m_value == c_undefinedVal) {
+    if (m_value == c_undefinedVal) {
         return false;
     }
 
-    if (m_value == c_trueVal) {
-        return true;
-    }
-
     switch (type()) {
+        case Type::Boolean:
+            return getCellTUnsafe<bool>()->value;
         case Type::Number:
-            return asOrDefault<double>(0.0) != 0.0;
+            return *asDouble() != 0.0;
         case Type::String:
             return !getCellTUnsafe<std::string>()->value.empty();
         case Type::ValueList:
@@ -159,10 +162,13 @@ bool Value::operator==(const Value &other) const {
 
     if (!isCell()) {
         assert("operator==: corrupted Value");
+        return false;
     }
 
     switch (type()) {
+        case Type::Boolean: return isCellEqualUnsafe<bool>(other);
         case Type::Number: return isCellEqualUnsafe<double>(other);
+        case Type::String: return isCellEqualUnsafe<std::string>(other);
         case Type::ValueList: return isCellEqualUnsafe<ValueList>(other);
         case Type::ShapeList: return isCellEqualUnsafe<ShapeList>(other);
         case Type::Function: return false; // functions are handled well enough by m_value equality check above
@@ -173,29 +179,15 @@ bool Value::operator==(const Value &other) const {
 }
 
 Type Value::type() const {
-    if (isCell()) {
-        return getCellUnsafe()->type;
-    }
-
-    switch (m_value) {
-        case c_undefinedVal: return Type::Undefined;
-        case c_trueVal: case c_falseVal: return Type::Boolean;
-        default: return Type::Number;
-    }
-}
-
-std::optional<bool> Value::asBool() const {
-    if (m_value == c_trueVal) {
-        return true;
-    } else if (m_value == c_falseVal) {
-        return false;
-    } else {
-        return std::nullopt;
-    }
+    return !m_value
+        ? Type::Undefined
+        : isCell()
+        ? getCellUnsafe()->type
+        : Type::Number;
 }
 
 std::optional<double> Value::asDouble() const {
-    if (m_value == c_undefinedVal || m_value == c_trueVal || m_value == c_falseVal) {
+    if (m_value == c_undefinedVal) {
         return std::nullopt;
     }
 
@@ -233,6 +225,9 @@ Value::CellT<T> const *Value::getCellTUnsafe() const {
 void Value::releaseCellUnsafe() {
     if (getCellUnsafe()->refCount.fetch_sub(1) == 1) {
         switch (getCellUnsafe()->type) {
+            case Type::Boolean:
+                assert("Booleans should never be deleted");
+                break;
             case Type::Number:
                 delete getCellTUnsafe<double>();
                 break;
@@ -253,4 +248,10 @@ void Value::releaseCellUnsafe() {
                 break;
         }
     }
+}
+
+Value Value::constructBool(bool v) {
+    Value value;
+    value.constructCell(v);
+    return value;
 }

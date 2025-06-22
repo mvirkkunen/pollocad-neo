@@ -68,7 +68,7 @@ class alignas(8) Value {
 public:
     constexpr Value() : m_value(c_undefinedVal) { }
     constexpr Value(Undefined) : m_value(c_undefinedVal) { }
-    constexpr Value(bool v) : m_value(v ? c_trueVal : c_falseVal) { }
+    Value(bool v);
     Value(double v);
     Value(int64_t v) : Value(static_cast<double>(v)) { }
     Value(int v) : Value(static_cast<double>(v)) { }
@@ -91,9 +91,7 @@ public:
 
     template <typename T>
     OptionalValue<T> as() const {
-        if constexpr (std::is_same_v<T, bool>) {
-            return asBool();
-        } else if constexpr (std::is_same_v<T, double>) {
+        if constexpr (std::is_same_v<T, double>) {
             return asDouble();
         } else {
             return (type() == typeOf<T>()) ? &getCellTUnsafe<T>()->value : nullptr;
@@ -156,17 +154,17 @@ public:
 
 private:
     static const uint64_t c_undefinedVal = 0;
-    // these values would represent weird NaNs after the double negation and shifting step, so they should not be seen in real use
-    static const uint64_t c_falseVal = 0x0000000000000010;
-    static const uint64_t c_trueVal = 0x0000000000000020;
 
     static const int c_rotate = 4;
 
+    static Value trueValue;
+    static Value falseValue;
+
     // Value representation:
     //
-    // - if m_value in [c_undefindVal, c_falseVal, c_trueVal] -> corresponding value
-    // - else if m_value low 3 bits are 000 -> pointer to Cell
-    // - else m_value = ~rotl(doubleVal, c_rotate)
+    // - if m_value == 0 -> undefined
+    // - else if m_value low 3 bits are 000 -> pointer to Cell (might store a double if it was an unlikely value)
+    // - else m_value = ~rotl(doubleVal, c_rotate) -> the bit fudging makes it very unlikely for the values to lool like a pointer
 
     struct Cell {
         std::atomic_uint32_t refCount;
@@ -176,20 +174,16 @@ private:
     template <typename T>
     struct CellT : public Cell {
         T value;
-
-        //CellT(Type type, T value) : refCount(1), type(type), value(std::move(value)) { }
     };
 
     uint64_t m_value;
 
-    std::optional<bool> asBool() const;
     std::optional<double> asDouble() const;
 
     template <typename T>
     void constructCell(T v);
 
-    // uhh
-    constexpr bool isCell() const { return m_value && (m_value != c_falseVal) && (m_value != c_trueVal) && (m_value & 0x7) == 0; }
+    constexpr bool isCell() const { return m_value && (m_value & 0x7) == 0; }
 
     template <typename T>
     bool isCellEqualUnsafe(const Value &other) const;
@@ -200,6 +194,8 @@ private:
     CellT<T> const *getCellTUnsafe() const;
 
     void releaseCellUnsafe();
+    
+    static Value constructBool(bool v);
 };
 
 constexpr const auto undefined = Value{};
