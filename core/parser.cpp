@@ -407,6 +407,10 @@ constexpr auto op_band = op_c<'&'>;
 
 constexpr auto op_bor = op_c<'|'>;
 
+constexpr auto op_and = OP_S("&&");
+
+constexpr auto op_or = OP_S("||");
+
 struct expr_ : lexy::expression_production
 {
     static constexpr auto name = "expression";
@@ -454,34 +458,68 @@ struct expr_ : lexy::expression_production
         using operand = band_;
     };
 
-    using operation = bor_;
+    struct and_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_and;
+        using operand = bor_;
+    };
 
-    static constexpr auto value = lexy::callback<Expr>(
-        [](Expr expr) { return std::move(expr); },
-        [](lexy::op<op_plus>, Expr val) { return CallExpr{"+", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
-        [](lexy::op<op_minus>, Expr val) { return CallExpr{"-", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
-        [](lexy::op<op_not>, Expr val) { return CallExpr{"!", move_vec(std::move(val))}; },
-        [](lexy::op<op_bnot>, Expr val) { return CallExpr{"~", move_vec(std::move(val))}; },
+    struct or_ : dsl::infix_op_left
+    {
+        static constexpr auto op = op_or;
+        using operand = and_;
+    };
 
-        [](Expr lhs, lexy::op<op_mul>, Expr rhs) { return CallExpr{"*", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_div>, Expr rhs) { return CallExpr{"/", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_mod>, Expr rhs) { return CallExpr{"%", move_vec(std::move(lhs), std::move(rhs))}; },
+    struct ternary_ : dsl::infix_op_list
+    {
+        static constexpr auto op = dsl::op<void>(dsl::question_mark >> dsl::p<expr> + dsl::colon);
+        using operand = or_;
+    };
 
-        [](Expr lhs, lexy::op<op_plus>, Expr rhs) { return CallExpr{"+", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_minus>, Expr rhs) { return CallExpr{"-", move_vec(std::move(lhs), std::move(rhs))}; },
+    using operation = ternary_;
 
-        [](Expr lhs, lexy::op<op_lt>, Expr rhs) { return CallExpr{"<", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_le>, Expr rhs) { return CallExpr{"<=", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_gt>, Expr rhs) { return CallExpr{">", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_ge>, Expr rhs) { return CallExpr{">=", move_vec(std::move(lhs), std::move(rhs))}; },
+    static constexpr auto value =
+        // this handles the ternary operator
+        lexy::fold_inplace<CallExpr>(
+            []() { return CallExpr{"if"}; },
+            [](auto &expr, Expr cond) {
+                expr.positional.push_back(expr.positional.empty() ? std::move(cond) : LambdaExpr{std::move(cond)});
+            },
+            [](auto &expr, Expr then, Expr condOrElse) {
+                expr.positional.push_back(LambdaExpr{std::move(then)});
+                expr.positional.push_back(LambdaExpr{std::move(condOrElse)});
+            }
+        )
+        >> lexy::callback<Expr>(
+            lexy::forward<Expr>,
+            [](lexy::op<op_plus>, Expr val) { return CallExpr{"+", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
+            [](lexy::op<op_minus>, Expr val) { return CallExpr{"-", move_vec(Expr{LiteralExpr{0.0}}, std::move(val))}; },
+            [](lexy::op<op_not>, Expr val) { return CallExpr{"!", move_vec(std::move(val))}; },
+            [](lexy::op<op_bnot>, Expr val) { return CallExpr{"~", move_vec(std::move(val))}; },
 
-        [](Expr lhs, lexy::op<op_eq>, Expr rhs) { return CallExpr{"==", move_vec(std::move(lhs), std::move(rhs))}; },
-        [](Expr lhs, lexy::op<op_ne>, Expr rhs) { return CallExpr{"!=", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_mul>, Expr rhs) { return CallExpr{"*", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_div>, Expr rhs) { return CallExpr{"/", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_mod>, Expr rhs) { return CallExpr{"%", move_vec(std::move(lhs), std::move(rhs))}; },
 
-        [](Expr lhs, lexy::op<op_band>, Expr rhs) { return CallExpr{"&", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_plus>, Expr rhs) { return CallExpr{"+", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_minus>, Expr rhs) { return CallExpr{"-", move_vec(std::move(lhs), std::move(rhs))}; },
 
-        [](Expr lhs, lexy::op<op_bor>, Expr rhs) { return CallExpr{"|", move_vec(std::move(lhs), std::move(rhs))}; }
-    );
+            [](Expr lhs, lexy::op<op_lt>, Expr rhs) { return CallExpr{"<", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_le>, Expr rhs) { return CallExpr{"<=", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_gt>, Expr rhs) { return CallExpr{">", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_ge>, Expr rhs) { return CallExpr{">=", move_vec(std::move(lhs), std::move(rhs))}; },
+
+            [](Expr lhs, lexy::op<op_eq>, Expr rhs) { return CallExpr{"==", move_vec(std::move(lhs), std::move(rhs))}; },
+            [](Expr lhs, lexy::op<op_ne>, Expr rhs) { return CallExpr{"!=", move_vec(std::move(lhs), std::move(rhs))}; },
+
+            [](Expr lhs, lexy::op<op_band>, Expr rhs) { return CallExpr{"&", move_vec(std::move(lhs), std::move(rhs))}; },
+
+            [](Expr lhs, lexy::op<op_bor>, Expr rhs) { return CallExpr{"|", move_vec(std::move(lhs), std::move(rhs))}; },
+
+            [](Expr lhs, lexy::op<op_and>, Expr rhs) { return CallExpr{"&&", move_vec(std::move(lhs), std::move(rhs))}; },
+
+            [](Expr lhs, lexy::op<op_or>, Expr rhs) { return CallExpr{"||", move_vec(std::move(lhs), std::move(rhs))}; }
+        );
 };
 
 struct stmt_def {

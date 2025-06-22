@@ -30,7 +30,15 @@ private slots:
         QFETCH(Value, expected);
 
         Executor executor;
-        auto actual = executor.execute(code.toStdString()).result;
+
+        auto result = executor.execute(code.toStdString());
+        if (!result.messages.empty()) {
+            for (const auto &msg : result.messages) {
+                std::cerr << msg.span << ": " << msg.message;
+            }
+        }
+
+        auto actual = result.result;
 
         QCOMPARE(actual, expected);
     }
@@ -62,11 +70,11 @@ private slots:
             << Value{ValueList{1.0, 2.0}};
 
         QTest::newRow("if_true") //
-            << "if 1 { 1 } else { 2 }"
+            << "if (1) { 1 } else { 2 }"
             << Value{1.0};
 
         QTest::newRow("if_false") //
-            << "if 0 { 1 } else { 2 }"
+            << "if (0) { 1 } else { 2 }"
             << Value{2.0};
 
         QTest::newRow("list_index") //
@@ -100,6 +108,11 @@ private slots:
         QTest::newRow("if_chain_false")
             << "if (0) 1"
             << Value{undefined};
+
+        QTest::newRow("ternary_true") << "1 ? 2 : 3" << Value{2};
+        QTest::newRow("ternary_false") << "0 ? 2 : 3" << Value{3};
+        QTest::newRow("nested_ternary_true") << "0 ? 1 : 2 ? 3 : 4" << Value{3};
+        QTest::newRow("nested_ternary_false") << "0 ? 1 : 0 ? 3 : 4" << Value{4};
     }
 };
 

@@ -6,29 +6,48 @@ namespace
 {
 
 Value builtin_if(const CallContext &c) {
-    auto pcond = c.get(0);
-    if (!pcond) {
-        return c.error("Malformed if clause (no condition)");
+    size_t size = c.positional().size();
+    for (int i = 0; i < size; i++) {
+        auto condOrElse = *c.get(i);
+
+        if (i == size - 1) {
+            if (auto pfunc = condOrElse.as<Function>()) {
+                // else
+                return (*pfunc)(c.empty());
+            } else {
+                return undefined;
+            }
+        }
+
+        bool truthy;
+        if (i == 0) {
+            truthy = condOrElse.truthy();
+        } else {
+            if (auto pfunc = condOrElse.as<Function>()) {
+                // condition
+                truthy = (*pfunc)(c.empty()).truthy();
+            } else {
+                return undefined;
+            }
+        }
+
+        i++;
+
+        if (truthy) {
+            if (i >= size) {
+                return c.error("malformed if clause (no value after condition)");
+            }
+
+            if (auto pfunc = c.get(i)->as<Function>()) {
+                // then
+                return (*pfunc)(c.empty());
+            } else {
+                return undefined;
+            }
+        }
     }
 
-    auto pthen = c.get<Function>(1);
-    if (!pthen) {
-        pthen = c.get<Function>("$children");
-    }
-
-    if (!pthen) {
-        return c.error("Malformed if clause (no then expression)");
-    }
-
-    auto pelse = c.get<Function>(2);
-
-    if (pcond->truthy()) {
-        return (*pthen)(c.empty());
-    } else if (pelse) {
-        return (*pelse)(c.empty());
-    } else {
-        return undefined;
-    }
+    return undefined;
 }
 
 auto builtin_un_op(std::function<double(double)> op) {
@@ -112,6 +131,36 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
         }
     };
 }
+
+Value builtin_logical_not(const CallContext &c) {
+    auto pval = c.get(0);
+    return pval && pval->truthy();
+}
+
+Value builtin_logical_and(const CallContext &c) {
+    auto pcond = c.get(0);
+    if (!pcond) {
+        return undefined;
+    }
+
+    if (!pcond->truthy()) {
+        return *pcond;
+    }
+
+    auto presult = c.get(1);
+    return presult ? *presult : undefined;
+}
+
+Value builtin_logical_or(const CallContext &c) {
+    auto pcond = c.get(0);
+    if (pcond && pcond->truthy()) {
+        return *pcond;
+    }
+
+    auto presult = c.get(1);
+    return presult ? *presult : undefined;
+}
+
 
 Value builtin_index(const CallContext &c) {
     auto pval = c.get(0);
@@ -247,7 +296,7 @@ Value builtin_echo(const CallContext &c) {
 }
 
 void add_builtins_primitives(Environment &env) {
-    env.setFunction("!", builtin_un_op([](auto a) { return !static_cast<bool>(a); }));
+    env.setFunction("!", builtin_logical_not);
     env.setFunction("~", builtin_un_op([](auto a) { return ~static_cast<uint64_t>(a); }));
 
     env.setFunction("*", builtin_bin_op([](auto a, auto b) { return a * b; }));
@@ -268,6 +317,10 @@ void add_builtins_primitives(Environment &env) {
     env.setFunction("&", builtin_bin_op([](auto a, auto b) { return static_cast<uint64_t>(a) & static_cast<uint64_t>(b); }));
 
     env.setFunction("|", builtin_bin_op([](auto a, auto b) { return static_cast<uint64_t>(a) & static_cast<uint64_t>(b); }));
+
+    env.setFunction("&&", builtin_logical_and);
+
+    env.setFunction("||", builtin_logical_or);
 
     env.setFunction("floor", builtin_un_op([](auto a) { return std::floor(a); }));
     env.setFunction("ceil", builtin_un_op([](auto a) { return std::ceil(a); }));
