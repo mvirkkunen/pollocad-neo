@@ -57,7 +57,7 @@ constexpr auto kw_true = LEXY_KEYWORD("true", ident_chars);
 constexpr auto kw_false = LEXY_KEYWORD("false", ident_chars);
 constexpr auto kw_undefined = LEXY_KEYWORD("undefined", ident_chars);
 
-constexpr auto ident_class = ident_chars.reserve(kw_if, kw_else, kw_for, kw_def);
+constexpr auto ident_class = ident_chars.reserve(kw_if, kw_else, kw_for, kw_def, kw_true, kw_false, kw_undefined);
 
 constexpr auto end_of_block = dsl::eof | dsl::lit_c<'}'>;
 
