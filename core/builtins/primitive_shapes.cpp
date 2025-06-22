@@ -25,7 +25,7 @@ const uint8_t polloStl[] = {
 Value addShapeChildren(const CallContext &c, ShapeList shape) {
     auto childrenp = c.get<Function>("$children");
     if (childrenp) {
-        auto children = (**childrenp)(c.with("$parent", shape));
+        auto children = (*childrenp)(c.with("$parent", shape));
         // TODO FIXME
         /*if (children.error()) {
             return undefined;

@@ -23,9 +23,9 @@ Value builtin_if(const CallContext &c) {
     auto pelse = c.get<Function>(2);
 
     if (pcond->truthy()) {
-        return (**pthen)(c.empty());
+        return (*pthen)(c.empty());
     } else if (pelse) {
-        return (**pelse)(c.empty());
+        return (*pelse)(c.empty());
     } else {
         return undefined;
     }
@@ -152,17 +152,17 @@ Value builtin_index(const CallContext &c) {
 
             return result;
         } else {
-            return c.error(std::format("cannot index list with value of type {}", pindex->type()));
+            return c.error(std::format("cannot index list with value of type {}", pindex->typeName()));
         }
     } else if (auto pstring = pval->as<std::string>()) {
         if (auto pnum = pindex->as<double>()) {
             size_t index = static_cast<size_t>(*pnum);
             return (index < pstring->size()) ? Value{std::string(1, (*pstring).at(index))} : undefined;
         } else {
-            return c.error(std::format("cannot index string with value of type {}", pindex->type()));
+            return c.error(std::format("cannot index string with value of type {}", pindex->typeName()));
         }
     } else {
-        return c.error(std::format("Cannot index value of type {}", pval->type()));
+        return c.error(std::format("Cannot index value of type {}", pval->typeName()));
     }
 }
 
@@ -186,7 +186,7 @@ Value builtin_concat(const CallContext &c) {
             } else if (auto plist = it->as<ValueList>()) {
                 std::copy(plist->cbegin(), plist->cend(), std::back_inserter(result));
             } else {
-                return c.error(std::format("concat arguments must all be of the same type or undefined (found list, then {})", it->type()));
+                return c.error(std::format("concat arguments must all be of the same type or undefined (found list, then {})", it->typeName()));
             }
         }
 
@@ -200,13 +200,13 @@ Value builtin_concat(const CallContext &c) {
             } else if (auto pstr = it->as<std::string>()) {
                 result += *pstr;
             } else {
-                return c.error(std::format("concat arguments must all be of the same type or undefined (found string, then {})", it->type()));
+                return c.error(std::format("concat arguments must all be of the same type or undefined (found string, then {})", it->typeName()));
             }
         }
 
         return result;
     } else {
-        return c.error(std::format("cannot concat values of type {}", it->type()));
+        return c.error(std::format("cannot concat values of type {}", it->typeName()));
     }
 }
 
@@ -215,7 +215,7 @@ Value builtin_type(const CallContext &c) {
         return undefined;
     }
 
-    return c.positional().at(0).type();
+    return c.positional().at(0).typeName();
 }
 
 Value builtin_str(const CallContext &c) {

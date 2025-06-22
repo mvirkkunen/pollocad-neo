@@ -6,7 +6,7 @@ const ShapeList CallContext::children() const {
         return {};
     }
 
-    const auto value = (**block)(empty());
+    const auto value = (*block)(empty());
     const auto shapes = value.as<ShapeList>();
     if (!shapes) {
         return {};
@@ -28,8 +28,8 @@ bool Environment::set(const std::string &name, Value value) {
     return true;
 }
 
-bool Environment::setFunction(const std::string &name, FunctionImpl func) {
-    return set(name, Value{std::make_shared<FunctionImpl>(func)});
+bool Environment::setFunction(const std::string &name, Function func) {
+    return set(name, Value{func});
 }
 
 bool Environment::get(const std::string &name, Value &out) const {

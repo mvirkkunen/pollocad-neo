@@ -31,58 +31,138 @@ Value Shape::getProp(const std::string &name) const {
     return (it == m_props.end()) ? undefined : it->second;
 }
 
-bool Value::truthy() const {
-    return std::visit(
-        [](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, double>) {
-                return v != 0.0;
-            } else if constexpr (std::is_same_v<T, Function>) {
-                return true;
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                return !v.empty();
-            } else {
-                return false;
-            }
-        },
-        v);
+namespace
+{
+
+static const intptr_t c_numberTag = 0;
+static const intptr_t c_integerTag = 1; // TODO 
+static const intptr_t c_stringTag = 2;
+static const intptr_t c_valueListTag = 3;
+static const intptr_t c_shapeListTag = 4;
+static const intptr_t c_functionTag = 5;
+
+static const intptr_t c_tagMask = 0x07;
+static const intptr_t c_ptrMask = ~c_tagMask;
+
 }
 
-std::ostream& operator<<(std::ostream& os, const Value& val) {
-    std::visit(
-        [&os](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Undefined>) {
-                os << "undefined";
-            } else if constexpr (std::is_same_v<T, double>) {
-                os << v;
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                os << std::quoted(v);
-            } else if constexpr (std::is_same_v<T, ShapeList>) {
-                os << "{ShapeList}";
-            } else if constexpr (std::is_same_v<T, Function>) {
-                os << "{Function}";
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                os << "[";
+Value::Value(double v) {
+    setPtr(c_numberTag, new double(v));
+}
 
-                bool first = true;
-                for (const auto& c : v) {
-                    if (first) {
-                        first = false;
-                    } else {
-                        os << ", ";
-                    }
+Value::Value(std::string v) {
+    setPtr(c_stringTag, new std::string(v));
+}
 
-                    os << c;
+Value::Value(ValueList v) {
+    setPtr(c_valueListTag, new ValueList(v));
+}
+
+Value::Value(ShapeList v) {
+    setPtr(c_shapeListTag, new ShapeList(v));
+}
+
+Value::Value(Function v) {
+    setPtr(c_functionTag, new Function(v));
+}
+
+Value::Value(const Value &other) {
+    switch (type()) {
+        case Type::Undefined:
+        case Type::Boolean:
+            m_ptr = other.m_ptr;
+            break;
+        case Type::Number:
+            setPtr(c_numberTag, new double(*asUnsafe<double>()));
+            break;
+        case Type::String:
+            setPtr(c_stringTag, new std::string(*asUnsafe<std::string>()));
+            break;
+        case Type::ValueList:
+            setPtr(c_valueListTag, new ValueList(*asUnsafe<ValueList>()));
+            break;
+        case Type::ShapeList:
+            setPtr(c_shapeListTag, new ShapeList(*asUnsafe<ShapeList>()));
+            break;
+        case Type::Function:
+            setPtr(c_functionTag, new Function(*asUnsafe<Function>()));
+            break;
+        default:
+            throw std::runtime_error("corrupted value");
+    }
+}
+
+bool Value::truthy() const {
+    if (m_ptr == c_trueVal) {
+        return true;
+    }
+
+    switch (type()) {
+        case Type::Number:
+            return *asUnsafe<double>() != 0.0;
+        case Type::String:
+            return !asUnsafe<std::string>()->empty();
+        case Type::ValueList:
+            return !asUnsafe<ValueList>()->empty();
+        case Type::ShapeList:
+            return !asUnsafe<ShapeList>()->empty();
+        case Type::Function:
+            return true;
+    }
+
+    return false;
+}
+
+std::ostream &Value::repr(std::ostream &os) const {
+    switch (type()) {
+        case Type::Undefined:
+            return os << "undefined";
+        case Type::Boolean:
+            return os << ((m_ptr == c_trueVal) ? "true" : "false");
+        case Type::Number:
+            return os << *asUnsafe<double>();
+        case Type::String:
+            return os << std::quoted(*asUnsafe<std::string>());
+        case Type::ValueList: {
+            const auto *plist = asUnsafe<ValueList>();
+            os << "[";
+
+            bool first = true;
+            for (const auto& item : *plist) {
+                if (first) {
+                    first = false;
+                } else {
+                    os << ", ";
                 }
-                os << "]";
-            } else {
-                static_assert(false, "non-exhaustive visitor!");
-            }
-        },
-        val.v);
 
-    return os;
+                item.repr(os);
+            }
+            os << "]";
+        }
+        case Type::ShapeList:
+            return os << "{Shape}";
+        case Type::Function:
+            return os << "{Function}";
+    }
+
+    throw std::runtime_error("corrupted value");
+}
+
+std::string Value::repr() const {
+    std::ostringstream ss;
+    repr(ss);
+    return ss.str();
+}
+
+std::ostream &Value::display(std::ostream &os) const {
+    switch (type()) {
+        case Type::Undefined:
+            return os;
+        case Type::String:
+            return os << *asUnsafe<std::string>();
+        default:
+            return repr(os);
+    }
 }
 
 std::string Value::display() const {
@@ -91,41 +171,91 @@ std::string Value::display() const {
     return ss.str();
 }
 
-void Value::display(std::ostream &os) const {
-    std::visit(
-        [&os](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Undefined>) {
-                os << "{Undefined}";
-            } else if constexpr (std::is_same_v<T, double>) {
-                os << v;
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                os << v;
-            } else if constexpr (std::is_same_v<T, ShapeList>) {
-                os << "{Shapes}";
-            } else if constexpr (std::is_same_v<T, Function>) {
-                os << "{Function}";
-            } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                bool first = true;
-
-                os << "[";
-                for (const auto& c : v) {
-                    if (first) {
-                        first = false;
-                    } else {
-                        os << ", ";
-                    }
-
-                    c.display(os);
-                }
-                os << "]";
-            } else {
-                static_assert(false, "non-exhaustive visitor!");
-            }
-        },
-        v);
+std::ostream& operator<<(std::ostream& os, const Value& val) {
+    return val.repr(os);
 }
 
-std::string Value::type() const {
-    return std::visit([](const auto &v) { return typeName<std::decay_t<decltype(v)>>(); }, v);
+bool Value::operator==(const Value &other) const {
+    if (type() != other.type()) {
+        return false;
+    }
+
+    switch (type()) {
+        case Type::Undefined:
+        case Type::Boolean:
+            return m_ptr == other.m_ptr;
+        case Type::Number:
+            return *asUnsafe<double>() == *other.asUnsafe<double>();
+        case Type::String:
+            return *asUnsafe<std::string>() == *other.asUnsafe<std::string>();
+        case Type::ValueList:
+            return *asUnsafe<ValueList>() == *other.asUnsafe<ValueList>();
+        case Type::ShapeList:
+            return *asUnsafe<ShapeList>() == *other.asUnsafe<ShapeList>();
+        case Type::Function:
+            return asUnsafe<Function>() == other.asUnsafe<Function>();
+    }
+
+    throw std::runtime_error("corrupted value");
+}
+
+Type Value::type() const {
+    if (m_ptr <= c_tagMask) {
+        switch (m_ptr) {
+            case c_undefinedVal: return Type::Undefined;
+            case c_trueVal: case c_falseVal: return Type::Boolean;
+        }
+    } else {
+        switch (m_ptr & c_tagMask) {
+            case c_numberTag: return Type::Number;
+            case c_stringTag: return Type::String;
+            case c_valueListTag: return Type::ValueList;
+            case c_shapeListTag: return Type::ShapeList;
+            case c_functionTag: return Type::Function;
+        }
+    }
+    
+    throw std::runtime_error("corrupted value");
+}
+
+void Value::setPtr(intptr_t tag, void *ptr) {
+    std::cerr << "ptr= " << ptr << " " << tag << "\n";
+    m_ptr = reinterpret_cast<intptr_t>(ptr) | tag;
+}
+
+void *Value::getPtr() const {
+    static Undefined undefinedVal{};
+    static bool falseVal = false;
+    static bool trueVal = true;
+
+    if (m_ptr <= c_tagMask) {
+        switch (m_ptr) {
+            case c_undefinedVal: return &undefinedVal;
+            case c_trueVal: return &trueVal;
+            case c_falseVal: return &falseVal;
+        }
+
+        throw std::runtime_error("corrupted value");
+    }
+
+    auto ptr = reinterpret_cast<void *>(m_ptr & c_ptrMask);
+
+    std::cerr << "ptr2=" << ptr << " type=" << static_cast<int>(type()) << "\n";
+
+    return ptr;
+}
+
+void Value::deletePtr() {
+    switch (type()) {
+        case Type::Number:
+            delete asUnsafe<double>();
+        case Type::String:
+            delete asUnsafe<std::string>();
+        case Type::ValueList:
+            delete asUnsafe<ValueList>();
+        case Type::ShapeList:
+            delete asUnsafe<ShapeList>();
+        case Type::Function:
+            delete asUnsafe<Function>();
+    }
 }

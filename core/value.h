@@ -15,7 +15,8 @@ struct Undefined
 {
     bool operator==(const Undefined &) const = default;
 };
-constexpr const auto undefined = Undefined{};
+
+using ValueList = std::vector<Value>;
 
 class Shape {
 public:
@@ -43,58 +44,111 @@ private:
 using ShapeList = std::vector<Shape>;
 
 class CallContext;
-using FunctionImpl = std::function<Value(const CallContext&)>;
-using Function = std::shared_ptr<FunctionImpl>;
+using Function = std::function<Value(const CallContext&)>;
 
-using ValueList = std::vector<Value>;
+enum class Type {
+    Undefined = 0,
+    Boolean = 1,
+    Number = 2,
+    String = 3,
+    ValueList = 4,
+    ShapeList = 5,
+    Function = 6,
+};
 
-class Value {
-private:
-    using Variant = std::variant<Undefined, double, std::string, ShapeList, Function, ValueList>;
-    Variant v;
-
+class alignas(8) Value {
 public:
-    Value() : v(::undefined) { }
+    constexpr Value() : Value(Undefined{}) { }
+    constexpr Value(Undefined) : m_ptr(c_undefinedVal) { }
+    constexpr Value(bool b) : m_ptr(b ? c_trueVal : c_falseVal) { }
+    Value(double v);
+    Value(int v) : Value(static_cast<double>(v)) { }
+    Value(std::string v);
+    Value(ValueList v);
+    Value(ShapeList v);
+    Value(Function v);
+    Value(const Value &other);
+    //constexpr Value::Value(const Value &&other) : m_ptr(std::move(other.m_ptr)) { }
 
-    constexpr Value(Undefined) : v(::undefined) { }
-    constexpr Value(double v) : v(v) { }
-    constexpr Value(int v) : v(static_cast<double>(v)) { }
-    constexpr Value(const std::string v) : v(v) { }
-    constexpr Value(ShapeList v) : v(v) { }
-    constexpr Value(ValueList v) : v(v) { }
-    Value(Function v) : v(v) { }
+    constexpr ~Value() {
+        if (m_ptr != c_undefinedVal && m_ptr != c_trueVal && m_ptr != c_falseVal) {
+            deletePtr();
+        }
+    }
+
+    Type type() const;
+    const char *typeName() const { return typeName(type()); }
 
     template <typename T>
     const T *as() const {
-        return std::get_if<T>(&v);
+        return (type() == typeOf<T>()) ? asUnsafe<T>() : nullptr;
     }
 
-    bool undefined() const { return std::holds_alternative<Undefined>(v); }
+    constexpr bool undefined() const { return m_ptr == c_undefinedVal; }
     bool truthy() const;
+
+    std::ostream &repr(std::ostream &os) const;
+    std::string repr() const;
+
+    std::ostream &display(std::ostream &os) const;
     std::string display() const;
-    void display(std::ostream &os) const;
-    std::string type() const;
+
+    bool operator==(const Value &other) const;
 
     friend std::ostream& operator<<(std::ostream& os, const Value& val);
 
-    bool operator==(const Value &) const = default;
-
     template <typename T>
-    static const char *typeName() {
+    static Type typeOf() {
         if constexpr (std::is_same_v<T, Undefined>) {
-            return "undefined";
+            return Type::Undefined;
+        } else if constexpr (std::is_same_v<T, bool>) {
+            return Type::Boolean;
         } else if constexpr (std::is_same_v<T, double>) {
-            return "number";
+            return Type::Number;
         } else if constexpr (std::is_same_v<T, std::string>) {
-            return "string";
+            return Type::String;
         } else if constexpr (std::is_same_v<T, ShapeList>) {
-            return "shapelist";
+            return Type::ShapeList;
         } else if constexpr (std::is_same_v<T, Function>) {
-            return "function";
-        } else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-            return "list";
+            return Type::Function;
+        } else if constexpr (std::is_same_v<T, ValueList>) {
+            return Type::ValueList;
         } else {
-            static_assert(false, "non-exhaustive visitor!");
+            static_assert(false, "this type cannot be represented");
         }
     }
+
+    static const char *typeName(Type type) {
+        const char *typeNames[] = {
+            "undefined",
+            "bool",
+            "number",
+            "string",
+            "shape",
+            "function",
+            "list"
+        };
+
+        const auto index = static_cast<size_t>(type);
+        return typeNames[index < sizeof(typeNames)/sizeof(typeNames[0]) ? index : 0];
+    }
+
+private:
+    static const intptr_t c_undefinedVal = 0;
+    static const intptr_t c_falseVal = 1;
+    static const intptr_t c_trueVal = 2;
+
+    intptr_t m_ptr;
+
+    void setPtr(intptr_t tag, void *ptr);
+    void *getPtr() const;
+    void deletePtr();
+
+    template <typename T>
+    T *asUnsafe() const {
+        return reinterpret_cast<T *>(getPtr());
+    }
 };
+
+constexpr const auto undefined = Value{};
+

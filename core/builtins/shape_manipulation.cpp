@@ -192,7 +192,7 @@ Value builtin_for(const CallContext &c) {
 
     ShapeList result;
     const auto iteration = [&](const Value &item) {
-        const auto value = (**children)(c.with(item));
+        const auto value = (*children)(c.with(item));
 
         if (value.undefined()) {
             // ignore

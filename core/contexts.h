@@ -47,7 +47,7 @@ public:
 
         auto tv = v->as<T>();
         if (!tv && typeError) {
-            warning(std::format("parameter {}: expected {}, got {}", index + 1, Value::typeName<T>(), v->type()));
+            warning(std::format("parameter {}: expected {}, got {}", index + 1, Value::typeName(Value::typeOf<T>()), v->typeName()));
         }
 
         return tv;
@@ -62,7 +62,7 @@ public:
 
         auto tv = v->as<T>();
         if (!tv && typeError) {
-            warning(std::format("parameter {}: expected {}, got {}", name, Value::typeName<T>(), v->type()));
+            warning(std::format("parameter {}: expected {}, got {}", name, Value::typeName(Value::typeOf<T>()), v->typeName()));
         }
 
         return tv;
@@ -110,7 +110,7 @@ public:
 
     bool isDefined(const std::string &name) const;
     bool set(const std::string &name, Value value);
-    bool setFunction(const std::string &name, FunctionImpl func);
+    bool setFunction(const std::string &name, Function func);
     bool get(const std::string &name, Value &out) const;
 
 private:

@@ -139,7 +139,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 auto func = funcVal.as<Function>();
                 if (!func && !error) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.type()), ex.span});
+                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.typeName()), ex.span});
                     error = true;
                 }
 
@@ -173,7 +173,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 Value result = undefined;
                 try {
-                    result = (**func)(CallContext(*context, positional, named, ex.span));
+                    result = (*func)(CallContext(*context, positional, named, ex.span));
                 } catch (Standard_Failure &exc) {
                     auto msg = std::format("Exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
                     context->messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
@@ -210,7 +210,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                 }
 
                 std::shared_ptr<ExecutionContext> context2 = context;
-                return std::make_shared<FunctionImpl>([context=context2, env, ex, defaults](const CallContext &c) -> Value {
+                return Value{[context=context2, env, ex, defaults](const CallContext &c) -> Value {
                     auto newEnv = std::make_shared<Environment>(env);
 
                     size_t i = 0;
@@ -240,7 +240,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     }
 
                     return eval(context, newEnv, &*ex.body);
-                });
+                }};
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
