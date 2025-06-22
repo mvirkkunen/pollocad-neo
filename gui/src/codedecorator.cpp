@@ -324,7 +324,7 @@ private:
     static constexpr const int c_inComment = 0x10000;
 
     QRegularExpression m_re{
-        "(if|else|for|def)"
+        "(if|else|for|def|true|false|undefined)"
         "|([$_a-z][_a-z0-9]*)"
         "|([+-]?[0-9]+(?:\\.[0-9]+)?)"
         "|([({\\[])"

@@ -53,6 +53,9 @@ constexpr auto kw_if = LEXY_KEYWORD("if", ident_chars);
 constexpr auto kw_else = LEXY_KEYWORD("else", ident_chars);
 constexpr auto kw_for = LEXY_KEYWORD("for", ident_chars);
 constexpr auto kw_def = LEXY_KEYWORD("def", ident_chars);
+constexpr auto kw_true = LEXY_KEYWORD("true", ident_chars);
+constexpr auto kw_false = LEXY_KEYWORD("false", ident_chars);
+constexpr auto kw_undefined = LEXY_KEYWORD("undefined", ident_chars);
 
 constexpr auto ident_class = ident_chars.reserve(kw_if, kw_else, kw_for, kw_def);
 
@@ -277,15 +280,19 @@ struct expr_var {
     );
 };
 
-struct expr_list_literal {
-    struct args_ {
-        static constexpr auto name = "list literal items";
-        static constexpr auto rule = dsl::square_bracketed.opt_list(dsl::p<expr>, dsl::ignore_trailing_sep(dsl::comma));
-        static constexpr auto value = lexy::as_list<std::vector<Expr>>;
-    };
+struct expr_undefined_literal : lexy::token_production {
+    static constexpr auto rule = kw_undefined;
+    static constexpr auto value = lexy::callback<Expr>([]() { return LiteralExpr(undefined); });
+};
 
-    static constexpr auto rule = dsl::p<args_>;
-    static constexpr auto value = lexy::callback<Expr>([](std::vector<Expr> args) { return CallExpr{"list", std::move(args)}; });
+struct expr_true_literal : lexy::token_production {
+    static constexpr auto rule = kw_true;
+    static constexpr auto value = lexy::callback<Expr>([]() { return LiteralExpr(true); });
+};
+
+struct expr_false_literal : lexy::token_production {
+    static constexpr auto rule = kw_false;
+    static constexpr auto value = lexy::callback<Expr>([]() { return LiteralExpr(false); });
 };
 
 struct expr_number_literal : lexy::token_production {
@@ -314,6 +321,17 @@ struct expr_string_literal : lexy::token_production {
     static constexpr auto rule = dsl::p<quoted_string_> | dsl::p<symbol_string_>;
     static constexpr auto value = lexy::as_string<std::string>
         >> lexy::callback<Expr>([](std::string value) { return LiteralExpr{value}; });
+};
+
+struct expr_list_literal {
+    struct args_ {
+        static constexpr auto name = "list literal items";
+        static constexpr auto rule = dsl::square_bracketed.opt_list(dsl::p<expr>, dsl::ignore_trailing_sep(dsl::comma));
+        static constexpr auto value = lexy::as_list<std::vector<Expr>>;
+    };
+
+    static constexpr auto rule = dsl::p<args_>;
+    static constexpr auto value = lexy::callback<Expr>([](std::vector<Expr> args) { return CallExpr{"list", std::move(args)}; });
 };
 
 struct expr_atom {
@@ -353,9 +371,12 @@ struct expr_atom {
                                   | dsl::p<expr_terminal>
                                   | dsl::p<expr_call> // call has to be before var for correct match!
                                   | dsl::p<expr_var>
-                                  | dsl::p<expr_list_literal>
+                                  | dsl::p<expr_undefined_literal>
+                                  | dsl::p<expr_true_literal>
+                                  | dsl::p<expr_false_literal>
                                   | dsl::p<expr_number_literal>
                                   | dsl::p<expr_string_literal>
+                                  | dsl::p<expr_list_literal>
                                   | dsl::error<expected_expression_error>) + dsl::opt(dsl::p<index_ops_>);
     static constexpr auto value = lexy::callback<Expr>(
         [](Expr expr, lexy::nullopt = {}) { return std::move(expr); },
