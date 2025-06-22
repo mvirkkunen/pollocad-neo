@@ -91,7 +91,9 @@ public:
 
     template <typename T>
     OptionalValue<T> as() const {
-        if constexpr (std::is_same_v<T, double>) {
+        if constexpr (std::is_same_v<T, bool>) {
+            return (type() == Type::Boolean) ? std::optional<bool>(getCellTUnsafe<T>()->value) : std::nullopt;
+        } else if constexpr (std::is_same_v<T, double>) {
             return asDouble();
         } else {
             return (type() == typeOf<T>()) ? &getCellTUnsafe<T>()->value : nullptr;
