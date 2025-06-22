@@ -132,6 +132,19 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
     };
 }
 
+constexpr auto builtin_equal(bool equal) {
+    return [equal](const CallContext &c) {
+        bool result = equal;
+        for (size_t i = 0; i < c.positional().size() - 1; i++) {
+            if ((*c.get(i) == *c.get(i + 1)) != equal) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+}
+
 Value builtin_logical_not(const CallContext &c) {
     auto pval = c.get(0);
     return pval && pval->truthy();
@@ -311,8 +324,8 @@ void add_builtins_primitives(Environment &env) {
     env.setFunction(">", builtin_bin_op([](auto a, auto b) { return a > b; }));
     env.setFunction(">=", builtin_bin_op([](auto a, auto b) { return a >= b; }));
 
-    env.setFunction("==", builtin_bin_op([](auto a, auto b) { return a == b; }));
-    env.setFunction("!=", builtin_bin_op([](auto a, auto b) { return a != b; }));
+    env.setFunction("==", builtin_equal(true));
+    env.setFunction("!=", builtin_equal(false));
 
     env.setFunction("&", builtin_bin_op([](auto a, auto b) { return static_cast<uint64_t>(a) & static_cast<uint64_t>(b); }));
 
