@@ -388,7 +388,7 @@ void CodeDecorator::adjustNumber(int dir) {
     auto block = getBlockAt(cursorPosition());
 
     const auto text = block.text();
-    const int cursor = std::max(cursorPosition(), 1);
+    const int cursor = std::max(cursorPosition() - block.position(), 1);
 
     int start = cursor - 1;
     for (; start > 0; start--) {
@@ -427,8 +427,8 @@ void CodeDecorator::adjustNumber(int dir) {
     }
 
     QTextCursor textCursor(block);
-    textCursor.setPosition(start);
-    textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, cursor);
+    textCursor.setPosition(block.position() + start);
+    textCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, cursor - start);
     textCursor.insertText(num);
 }
 
