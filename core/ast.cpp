@@ -33,7 +33,7 @@ void Expr::dump(std::ostream &os, int indent = 0) const {
                 }
                 os << space(indent) << "}\n";
             } else if constexpr (std::is_same_v<T, LiteralExpr>) {
-                os << space(indent) << "LiteralExpr{" << *ex.value << "}\n";
+                os << space(indent) << "LiteralExpr{" << ex.value << "}\n";
             } else if constexpr (std::is_same_v<T, VarExpr>) {
                 os << space(indent) << "VarExpr" << ex.span << "{" << ex.name << "}\n";
             } else if constexpr (std::is_same_v<T, LetExpr>) {

@@ -111,7 +111,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 return shapes;
             } else if constexpr (std::is_same_v<T, ast::LiteralExpr>) {
-                return *ex.value;
+                return ex.value;
             } else if constexpr (std::is_same_v<T, ast::VarExpr>) {
                 Value val;
                 if (!env->get(ex.name, val)) {

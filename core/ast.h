@@ -44,14 +44,12 @@ struct BlockExpr {
 };
 
 struct LiteralExpr {
-    std::shared_ptr<Value> value = nullptr;
+    Value value = undefined;
 
     template <typename T>
-    LiteralExpr(const T& value) : value(std::make_shared<Value>(value)) { }
-    //LiteralExpr(const Value& value) : value(std::make_shared<Value>(value)) { }
-    //LiteralExpr(double value) : value(std::make_shared<Value>(value)) { }
+    LiteralExpr(const T& value) : value(value) { }
 
-    bool operator==(const LiteralExpr& other) const { return *value == *other.value; }
+    bool operator==(const LiteralExpr& other) const { return value == other.value; }
 };
 
 struct VarExpr {

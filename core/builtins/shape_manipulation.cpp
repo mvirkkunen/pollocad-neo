@@ -233,7 +233,8 @@ Value builtin_for(const CallContext &c) {
         }
 
         constexpr double defaultStep = 1.0;
-        const auto pstep = c.positional().size() == 3 ? c.get<double>(1) : &defaultStep;
+
+        const auto pstep = c.positional().size() == 3 ? c.get(1)->as<double>() : 1.0;
         if (!pstep) {
             return c.error("for loop step value must be a number");
         }

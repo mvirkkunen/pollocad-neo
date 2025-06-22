@@ -80,7 +80,7 @@ Value builtin_chamfer_filler(const CallContext &c) {
                     continue;
                 }
 
-                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : &r;
+                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : r;
                 if (!pr) {
                     c.warning(std::format("Invalid radius specification: {}", (*ppair)[1].display()));
                     continue;

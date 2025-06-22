@@ -1,3 +1,5 @@
+#include <cassert>
+
 #include "value.h"
 
 Shape::Shape(TopoDS_Shape shape, Span span) : m_shape(shape), m_spans({span}) { }
@@ -31,81 +33,50 @@ Value Shape::getProp(const std::string &name) const {
     return (it == m_props.end()) ? undefined : it->second;
 }
 
-namespace
-{
-
-static const intptr_t c_numberTag = 0;
-static const intptr_t c_integerTag = 1; // TODO 
-static const intptr_t c_stringTag = 2;
-static const intptr_t c_valueListTag = 3;
-static const intptr_t c_shapeListTag = 4;
-static const intptr_t c_functionTag = 5;
-
-static const intptr_t c_tagMask = 0x07;
-static const intptr_t c_ptrMask = ~c_tagMask;
-
-}
-
 Value::Value(double v) {
-    setPtr(c_numberTag, new double(v));
-}
-
-Value::Value(std::string v) {
-    setPtr(c_stringTag, new std::string(v));
-}
-
-Value::Value(ValueList v) {
-    setPtr(c_valueListTag, new ValueList(v));
-}
-
-Value::Value(ShapeList v) {
-    setPtr(c_shapeListTag, new ShapeList(v));
-}
-
-Value::Value(Function v) {
-    setPtr(c_functionTag, new Function(v));
-}
-
-Value::Value(const Value &other) {
-    switch (type()) {
-        case Type::Undefined:
-        case Type::Boolean:
-            m_ptr = other.m_ptr;
-            break;
-        case Type::Number:
-            setPtr(c_numberTag, new double(*asUnsafe<double>()));
-            break;
-        case Type::String:
-            setPtr(c_stringTag, new std::string(*asUnsafe<std::string>()));
-            break;
-        case Type::ValueList:
-            setPtr(c_valueListTag, new ValueList(*asUnsafe<ValueList>()));
-            break;
-        case Type::ShapeList:
-            setPtr(c_shapeListTag, new ShapeList(*asUnsafe<ShapeList>()));
-            break;
-        case Type::Function:
-            setPtr(c_functionTag, new Function(*asUnsafe<Function>()));
-            break;
-        default:
-            throw std::runtime_error("corrupted value");
+    auto bits = std::rotl(~std::bit_cast<uint64_t>(v), c_rotate);
+    if ((bits & 0x7) == 0) {
+        // Unusual double, must represent as Cell
+        constructCell(v);
+    } else {
+        m_value = bits;
     }
 }
 
+Value::Value(std::string v) { constructCell(v); }
+Value::Value(ValueList v) { constructCell(v); }
+Value::Value(ShapeList v) { constructCell(v); }
+Value::Value(Function v) { constructCell(v); }
+
+Value::Value(const Value &other) { *this = other; }
+
+Value &Value::operator=(const Value &other) {
+    m_value = other.m_value;
+    if (isCell()) {
+        getCellUnsafe()->refCount.fetch_add(1);
+    }
+
+    return *this;
+}
+
 bool Value::truthy() const {
-    if (m_ptr == c_trueVal) {
+    if (m_value == c_falseVal || m_value == c_undefinedVal) {
+        return false;
+    }
+
+    if (m_value == c_trueVal) {
         return true;
     }
 
     switch (type()) {
         case Type::Number:
-            return *asUnsafe<double>() != 0.0;
+            return asOrDefault<double>(0.0) != 0.0;
         case Type::String:
-            return !asUnsafe<std::string>()->empty();
+            return !getCellTUnsafe<std::string>()->value.empty();
         case Type::ValueList:
-            return !asUnsafe<ValueList>()->empty();
+            return !getCellTUnsafe<ValueList>()->value.empty();
         case Type::ShapeList:
-            return !asUnsafe<ShapeList>()->empty();
+            return !getCellTUnsafe<ShapeList>()->value.empty();
         case Type::Function:
             return true;
     }
@@ -118,17 +89,17 @@ std::ostream &Value::repr(std::ostream &os) const {
         case Type::Undefined:
             return os << "undefined";
         case Type::Boolean:
-            return os << ((m_ptr == c_trueVal) ? "true" : "false");
+            return os << (*as<bool>() ? "true" : "false");
         case Type::Number:
-            return os << *asUnsafe<double>();
+            return os << *as<double>();
         case Type::String:
-            return os << std::quoted(*asUnsafe<std::string>());
+            return os << std::quoted(*as<std::string>());
         case Type::ValueList: {
-            const auto *plist = asUnsafe<ValueList>();
+            ValueList list = *as<ValueList>();
             os << "[";
 
             bool first = true;
-            for (const auto& item : *plist) {
+            for (const auto& item : list) {
                 if (first) {
                     first = false;
                 } else {
@@ -138,14 +109,16 @@ std::ostream &Value::repr(std::ostream &os) const {
                 item.repr(os);
             }
             os << "]";
+            break;
         }
         case Type::ShapeList:
-            return os << "{Shape}";
+            return os << "{shape}";
         case Type::Function:
-            return os << "{Function}";
+            return os << "{function}";
     }
 
-    throw std::runtime_error("corrupted value");
+    assert("repr: corrupted Cell");
+    return os;
 }
 
 std::string Value::repr() const {
@@ -159,7 +132,7 @@ std::ostream &Value::display(std::ostream &os) const {
         case Type::Undefined:
             return os;
         case Type::String:
-            return os << *asUnsafe<std::string>();
+            return os << *as<std::string>();
         default:
             return repr(os);
     }
@@ -176,86 +149,108 @@ std::ostream& operator<<(std::ostream& os, const Value& val) {
 }
 
 bool Value::operator==(const Value &other) const {
+    if (m_value == other.m_value) {
+        return true;
+    }
+
     if (type() != other.type()) {
         return false;
     }
 
-    switch (type()) {
-        case Type::Undefined:
-        case Type::Boolean:
-            return m_ptr == other.m_ptr;
-        case Type::Number:
-            return *asUnsafe<double>() == *other.asUnsafe<double>();
-        case Type::String:
-            return *asUnsafe<std::string>() == *other.asUnsafe<std::string>();
-        case Type::ValueList:
-            return *asUnsafe<ValueList>() == *other.asUnsafe<ValueList>();
-        case Type::ShapeList:
-            return *asUnsafe<ShapeList>() == *other.asUnsafe<ShapeList>();
-        case Type::Function:
-            return asUnsafe<Function>() == other.asUnsafe<Function>();
+    if (!isCell()) {
+        assert("operator==: corrupted Value");
     }
 
-    throw std::runtime_error("corrupted value");
+    switch (type()) {
+        case Type::Number: return isCellEqualUnsafe<double>(other);
+        case Type::ValueList: return isCellEqualUnsafe<ValueList>(other);
+        case Type::ShapeList: return isCellEqualUnsafe<ShapeList>(other);
+        case Type::Function: return false; // functions are handled well enough by m_value equality check above
+    }
+
+    assert("operator==: corrupted Cell");
+    return false;
 }
 
 Type Value::type() const {
-    if (m_ptr <= c_tagMask) {
-        switch (m_ptr) {
-            case c_undefinedVal: return Type::Undefined;
-            case c_trueVal: case c_falseVal: return Type::Boolean;
-        }
+    if (isCell()) {
+        return getCellUnsafe()->type;
+    }
+
+    switch (m_value) {
+        case c_undefinedVal: return Type::Undefined;
+        case c_trueVal: case c_falseVal: return Type::Boolean;
+        default: return Type::Number;
+    }
+}
+
+std::optional<bool> Value::asBool() const {
+    if (m_value == c_trueVal) {
+        return true;
+    } else if (m_value == c_falseVal) {
+        return false;
     } else {
-        switch (m_ptr & c_tagMask) {
-            case c_numberTag: return Type::Number;
-            case c_stringTag: return Type::String;
-            case c_valueListTag: return Type::ValueList;
-            case c_shapeListTag: return Type::ShapeList;
-            case c_functionTag: return Type::Function;
-        }
+        return std::nullopt;
     }
-    
-    throw std::runtime_error("corrupted value");
 }
 
-void Value::setPtr(intptr_t tag, void *ptr) {
-    std::cerr << "ptr= " << ptr << " " << tag << "\n";
-    m_ptr = reinterpret_cast<intptr_t>(ptr) | tag;
-}
-
-void *Value::getPtr() const {
-    static Undefined undefinedVal{};
-    static bool falseVal = false;
-    static bool trueVal = true;
-
-    if (m_ptr <= c_tagMask) {
-        switch (m_ptr) {
-            case c_undefinedVal: return &undefinedVal;
-            case c_trueVal: return &trueVal;
-            case c_falseVal: return &falseVal;
-        }
-
-        throw std::runtime_error("corrupted value");
+std::optional<double> Value::asDouble() const {
+    if (m_value == c_undefinedVal || m_value == c_trueVal || m_value == c_falseVal) {
+        return std::nullopt;
     }
 
-    auto ptr = reinterpret_cast<void *>(m_ptr & c_ptrMask);
+    if (isCell()) {
+        return (getCellUnsafe()->type == Type::Number) ? std::optional<double>{getCellTUnsafe<double>()->value} : std::nullopt;
+    }
 
-    std::cerr << "ptr2=" << ptr << " type=" << static_cast<int>(type()) << "\n";
-
-    return ptr;
+    return std::bit_cast<double>(~std::rotr(m_value, c_rotate));
 }
 
-void Value::deletePtr() {
-    switch (type()) {
-        case Type::Number:
-            delete asUnsafe<double>();
-        case Type::String:
-            delete asUnsafe<std::string>();
-        case Type::ValueList:
-            delete asUnsafe<ValueList>();
-        case Type::ShapeList:
-            delete asUnsafe<ShapeList>();
-        case Type::Function:
-            delete asUnsafe<Function>();
+template <typename T>
+void Value::constructCell(T v) {
+    static_assert(sizeof(void *) <= sizeof(m_value));
+    m_value = reinterpret_cast<uint64_t>(static_cast<Cell *>(new CellT<T>{1, typeOf<T>(), v}));
+}
+
+// Safety contract: both Values must be Cells of type T
+template <typename T>
+bool Value::isCellEqualUnsafe(const Value &other) const {
+    return getCellTUnsafe<T>()->value == other.getCellTUnsafe<T>()->value;
+}
+
+// Safety contract: Value must be a Cell
+Value::Cell *Value::getCellUnsafe() const {
+    return reinterpret_cast<Cell *>(m_value);
+}
+
+// Safety contract: Value must be a Cell of type T
+template <typename T>
+Value::CellT<T> const *Value::getCellTUnsafe() const {
+    return static_cast<CellT<T> *>(getCellUnsafe());
+}
+
+// Safety contract: Value must be a Cell
+void Value::releaseCellUnsafe() {
+    if (getCellUnsafe()->refCount.fetch_sub(1) == 1) {
+        switch (getCellUnsafe()->type) {
+            case Type::Number:
+                delete getCellTUnsafe<double>();
+                break;
+            case Type::String:
+                delete getCellTUnsafe<std::string>();
+                break;
+            case Type::ValueList:
+                delete getCellTUnsafe<ValueList>();
+                break;
+            case Type::ShapeList:
+                delete getCellTUnsafe<ShapeList>();
+                break;
+            case Type::Function:
+                delete getCellTUnsafe<Function>();
+                break;
+            default:
+                assert("releaseCellUnsafe: corrupted Cell");
+                break;
+        }
     }
 }

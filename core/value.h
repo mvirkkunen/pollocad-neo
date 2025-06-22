@@ -1,10 +1,12 @@
 #pragma once
 
+#include <atomic>
+#include <bit>
 #include <functional>
 #include <memory>
-#include <variant>
-#include <vector>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 #include <TopoDS_Shape.hxx>
 
 #include "logmessage.h"
@@ -56,23 +58,31 @@ enum class Type {
     Function = 6,
 };
 
+template <typename T> struct OptionalValueT { using Type = const T *; };
+template <> struct OptionalValueT<bool> { using Type = std::optional<bool>; };
+template <> struct OptionalValueT<double> { using Type = std::optional<double>; };
+
+template <typename T> using OptionalValue = OptionalValueT<T>::Type;
+
 class alignas(8) Value {
 public:
-    constexpr Value() : Value(Undefined{}) { }
-    constexpr Value(Undefined) : m_ptr(c_undefinedVal) { }
-    constexpr Value(bool b) : m_ptr(b ? c_trueVal : c_falseVal) { }
+    constexpr Value() : m_value(c_undefinedVal) { }
+    constexpr Value(Undefined) : m_value(c_undefinedVal) { }
+    constexpr Value(bool v) : m_value(v ? c_trueVal : c_falseVal) { }
     Value(double v);
+    Value(int64_t v) : Value(static_cast<double>(v)) { }
     Value(int v) : Value(static_cast<double>(v)) { }
     Value(std::string v);
+    Value(const char *v) : Value(std::string(v)) { }
     Value(ValueList v);
     Value(ShapeList v);
     Value(Function v);
     Value(const Value &other);
-    //constexpr Value::Value(const Value &&other) : m_ptr(std::move(other.m_ptr)) { }
+    Value &operator=(const Value &other);
 
     constexpr ~Value() {
-        if (m_ptr != c_undefinedVal && m_ptr != c_trueVal && m_ptr != c_falseVal) {
-            deletePtr();
+        if (isCell()) {
+            releaseCellUnsafe();
         }
     }
 
@@ -80,11 +90,23 @@ public:
     const char *typeName() const { return typeName(type()); }
 
     template <typename T>
-    const T *as() const {
-        return (type() == typeOf<T>()) ? asUnsafe<T>() : nullptr;
+    OptionalValue<T> as() const {
+        if constexpr (std::is_same_v<T, bool>) {
+            return asBool();
+        } else if constexpr (std::is_same_v<T, double>) {
+            return asDouble();
+        } else {
+            return (type() == typeOf<T>()) ? &getCellTUnsafe<T>()->value : nullptr;
+        }
     }
 
-    constexpr bool undefined() const { return m_ptr == c_undefinedVal; }
+    template <typename T>
+    const T asOrDefault(T default_) const {
+        auto value = as<T>();
+        return value ? *value : default_;
+    }
+
+    constexpr bool undefined() const { return m_value == c_undefinedVal; }
     bool truthy() const;
 
     std::ostream &repr(std::ostream &os) const;
@@ -97,8 +119,7 @@ public:
 
     friend std::ostream& operator<<(std::ostream& os, const Value& val);
 
-    template <typename T>
-    static Type typeOf() {
+    template <typename T> static Type typeOf() {
         if constexpr (std::is_same_v<T, Undefined>) {
             return Type::Undefined;
         } else if constexpr (std::is_same_v<T, bool>) {
@@ -124,9 +145,9 @@ public:
             "bool",
             "number",
             "string",
+            "list",
             "shape",
             "function",
-            "list"
         };
 
         const auto index = static_cast<size_t>(type);
@@ -134,20 +155,51 @@ public:
     }
 
 private:
-    static const intptr_t c_undefinedVal = 0;
-    static const intptr_t c_falseVal = 1;
-    static const intptr_t c_trueVal = 2;
+    static const uint64_t c_undefinedVal = 0;
+    // these values would represent weird NaNs after the double negation and shifting step, so they should not be seen in real use
+    static const uint64_t c_falseVal = 0x0000000000000010;
+    static const uint64_t c_trueVal = 0x0000000000000020;
 
-    intptr_t m_ptr;
+    static const int c_rotate = 4;
 
-    void setPtr(intptr_t tag, void *ptr);
-    void *getPtr() const;
-    void deletePtr();
+    // Value representation:
+    //
+    // - if m_value in [c_undefindVal, c_falseVal, c_trueVal] -> corresponding value
+    // - else if m_value low 3 bits are 000 -> pointer to Cell
+    // - else m_value = ~rotl(doubleVal, c_rotate)
+
+    struct Cell {
+        std::atomic_uint32_t refCount;
+        Type type;
+    };
 
     template <typename T>
-    T *asUnsafe() const {
-        return reinterpret_cast<T *>(getPtr());
-    }
+    struct CellT : public Cell {
+        T value;
+
+        //CellT(Type type, T value) : refCount(1), type(type), value(std::move(value)) { }
+    };
+
+    uint64_t m_value;
+
+    std::optional<bool> asBool() const;
+    std::optional<double> asDouble() const;
+
+    template <typename T>
+    void constructCell(T v);
+
+    // uhh
+    constexpr bool isCell() const { return m_value && (m_value != c_falseVal) && (m_value != c_trueVal) && (m_value & 0x7) == 0; }
+
+    template <typename T>
+    bool isCellEqualUnsafe(const Value &other) const;
+
+    Cell *getCellUnsafe() const;
+
+    template <typename T>
+    CellT<T> const *getCellTUnsafe() const;
+
+    void releaseCellUnsafe();
 };
 
 constexpr const auto undefined = Value{};

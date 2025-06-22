@@ -39,10 +39,10 @@ public:
     }
 
     template <typename T>
-    const T *get(size_t index, bool typeError=true) const {
+    const OptionalValue<T> get(size_t index, bool typeError=true) const {
         auto v = get(index);
         if (!v) {
-            return nullptr;
+            return {};
         }
 
         auto tv = v->as<T>();
@@ -54,10 +54,10 @@ public:
     }
 
     template <typename T>
-    const T *get(const std::string &name, bool typeError=true) const {
+    const OptionalValue<T> get(const std::string &name, bool typeError=true) const {
         auto v = get(name);
         if (!v) {
-            return nullptr;
+            return {};
         }
 
         auto tv = v->as<T>();

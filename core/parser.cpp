@@ -146,9 +146,9 @@ struct function_call_chain {
     static constexpr const char *name = "function call chain";
 
     struct call_highlight_ {
-        static constexpr auto rule = dsl::hash_sign;
-        static constexpr auto value = lexy::callback<CallExpr>(
-            []() { return CallExpr{"prop", {LiteralExpr{"highlight"}, LiteralExpr{true}}}; }
+        static constexpr auto rule = dsl::position(dsl::hash_sign) >> dsl::position;
+        static constexpr auto value = lexy::callback_with_state<CallExpr>(
+            [](ParseState &st, Pos begin, Pos end) { return CallExpr{"prop", {LiteralExpr{"highlight"}, LiteralExpr{true}}, {}, st.span(begin, end)}; }
         );
     };
 
@@ -251,7 +251,7 @@ struct stmt_call {
                 if (next.func == "for") {
                     auto nameExpr = next.positional.back();
                     if (auto pLiteralExpr = std::get_if<LiteralExpr>(&nameExpr.inner())) {
-                        if (auto pname = pLiteralExpr->value->as<std::string>()) {
+                        if (auto pname = pLiteralExpr->value.as<std::string>()) {
                             if (auto plambda = std::get_if<LambdaExpr>(&result.inner())) {
                                 next.positional.pop_back();
                                 plambda->args.push_back(LambdaExpr::Arg{*pname});

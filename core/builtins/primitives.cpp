@@ -39,9 +39,9 @@ auto builtin_un_op(std::function<double(double)> op) {
 
         auto a = c.get(0);
 
-        if (auto *pna = a->as<double>()) {
+        if (auto pna = a->as<double>()) {
             return op(*pna);
-        } else if (auto *pla = a->as<ValueList>()) {
+        } else if (auto pla = a->as<ValueList>()) {
             ValueList result;
             result.reserve(pla->size());
 
@@ -49,7 +49,7 @@ auto builtin_un_op(std::function<double(double)> op) {
                 if ((*pla)[i].undefined()) {
                     result.push_back(undefined);
                 } else {
-                    auto *pna = (*pla)[i].as<double>();
+                    auto na = (*pla)[i].as<double>();
                     if (!pna) {
                         return c.error("list items must be either numbers or undefined");
                     }
@@ -74,14 +74,14 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
         auto a = c.get(0);
         auto b = c.get(1);
 
-        if (auto *pna = a->as<double>()) {
-            if (auto *pnb = b->as<double>()) {
+        if (auto pna = a->as<double>()) {
+            if (auto pnb = b->as<double>()) {
                 return op(*pna, *pnb);
             } else {
                 return c.error("both operands must be either numbers or lists");
             }
-        } else if (auto *pla = a->as<ValueList>()) {
-            if (auto *plb = b->as<ValueList>()) {
+        } else if (auto pla = a->as<ValueList>()) {
+            if (auto plb = b->as<ValueList>()) {
                 ValueList result;
                 result.reserve(pla->size());
 
@@ -89,12 +89,12 @@ auto builtin_bin_op(std::function<double(double, double)> op) {
                     if ((*pla)[i].undefined() || i >= plb->size() || (*plb)[i].undefined()) {
                         result.push_back(undefined);
                     } else {
-                        auto *pna = (*pla)[i].as<double>();
+                        auto pna = (*pla)[i].as<double>();
                         if (!pna) {
                             return c.error("list items must be either numbers or undefined");
                         }
 
-                        auto *pnb = (*plb)[i].as<double>();
+                        auto pnb = (*plb)[i].as<double>();
                         if (!pna) {
                             return c.error("list items must be either numbers or undefined");
                         }
