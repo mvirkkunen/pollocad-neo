@@ -12,9 +12,15 @@ class ExecutionContext {
 public:
     ExecutionContext(const std::shared_ptr<std::atomic_bool> canceled) : m_canceled(canceled) { }
 
-    void cancel() { m_canceled->store(true); }
+    template <typename... Args>
+    void addMessage(LogMessage::Level level, Span span, std::format_string<Args...> fmt, Args&&... args) {
+        const auto msg = std::format(fmt, std::forward<Args>(args)...);
+        std::unique_lock lock(m_messagesLock);
+        m_messages.push_back({level, msg, span});
+    }
+
     bool isCanceled() { return m_canceled->load(); }
-    std::vector<LogMessage> &messages() { return m_messages; }
+    const std::vector<LogMessage> &messages() { return m_messages; }
 
 private:
     std::shared_ptr<std::atomic_bool> m_canceled;
@@ -53,7 +59,7 @@ public:
 
         auto tv = v->as<T>();
         if (!tv && typeError) {
-            warning(std::format("parameter {}: expected {}, got {}", index + 1, Value::typeName(Value::typeOf<T>()), v->typeName()));
+            warning("parameter {}: expected {}, got {}", index + 1, Value::typeName(Value::typeOf<T>()), v->typeName());
         }
 
         return tv;
@@ -68,7 +74,7 @@ public:
 
         auto tv = v->as<T>();
         if (!tv && typeError) {
-            warning(std::format("parameter {}: expected {}, got {}", name, Value::typeName(Value::typeOf<T>()), v->typeName()));
+            warning("parameter {}: expected {}, got {}", name, Value::typeName(Value::typeOf<T>()), v->typeName());
         }
 
         return tv;
@@ -76,17 +82,20 @@ public:
 
     const ShapeList children() const;
 
-    Value error(const std::string &msg) const {
-        m_execContext.messages().push_back(LogMessage{LogMessage::Level::Error, msg, m_span});
+    template <typename... Args>
+    Value error(std::format_string<Args...> fmt, Args&&... args) const {
+        m_execContext.addMessage(LogMessage::Level::Error, m_span, fmt, std::forward<Args>(args)...);
         return undefined;
     }
 
-    void warning(const std::string &msg) const {
-        m_execContext.messages().push_back(LogMessage{LogMessage::Level::Warning, msg, m_span});
+    template <typename... Args>
+    void warning(std::format_string<Args...> fmt, Args&&... args) const {
+        m_execContext.addMessage(LogMessage::Level::Warning, m_span, fmt, std::forward<Args>(args)...);
     }
 
-    void info(const std::string &msg) const {
-        m_execContext.messages().push_back(LogMessage{LogMessage::Level::Info, msg, m_span});
+    template <typename... Args>
+    void info(std::format_string<Args...> fmt, Args&&... args) const {
+        m_execContext.addMessage(LogMessage::Level::Info, m_span, fmt, std::forward<Args>(args)...);
     }
 
     CallContext empty() const {

@@ -36,7 +36,7 @@ void parseEdgeSpec(const CallContext &c, std::vector<Shape> &highlightOut, std::
                     case 'l': filter.bound.SetX(0.0); break;
                     case 'n': filter.bound.SetY(0.0); break;
                     case 'b': filter.bound.SetZ(0.0); break;
-                    default: c.warning(std::format("Invalid edge specification: {}", *pstr)); return;
+                    default: c.warning("Invalid edge specification: {}", *pstr); return;
                 }
             }
 
@@ -50,7 +50,7 @@ void parseEdgeSpec(const CallContext &c, std::vector<Shape> &highlightOut, std::
         out.push_back(filter);
         std::copy_if(pshape->begin(), pshape->end(), std::back_inserter(highlightOut), [](const Shape &sh) { return sh.hasProp("highlight"); });
     } else {
-        c.warning(std::format("Invalid edge specification: {}", spec.display()));
+        c.warning("Invalid edge specification: {}", spec.display());
     }
 }
 
@@ -76,13 +76,13 @@ Value builtin_chamfer_filler(const CallContext &c) {
         for (const auto &spec : *plist) {
             if (const auto ppair = spec.as<ValueList>()) {
                 if (ppair->size() == 0 || ppair->size() > 2) {
-                    c.warning(std::format("Invalid edge specification pair: {}", spec.display()));
+                    c.warning("Invalid edge specification pair: {}", spec.display());
                     continue;
                 }
 
                 auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : r;
                 if (!pr) {
-                    c.warning(std::format("Invalid radius specification: {}", (*ppair)[1].display()));
+                    c.warning("Invalid radius specification: {}", (*ppair)[1].display());
                     continue;
                 }
 
@@ -155,13 +155,13 @@ Value builtin_chamfer_filler(const CallContext &c) {
         }
 
         if (!anyMatch) {
-            c.warning(std::format("No edges found to process"));
+            c.warning("No edges found to process");
             return children;
         }
 
         algo.Build();
         if (!algo.IsDone()) {
-            c.error(std::format("Operation failed. Shape is too complex or radius is too large."));
+            c.error("Operation failed. Shape is too complex or radius is too large.");
             result.push_back(ch);
             continue;
         }

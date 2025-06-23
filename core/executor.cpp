@@ -43,7 +43,9 @@ ExecutorResult Executor::execute(const std::string &code) {
 
     const auto parserResult = parse(code);
 
-    std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(context.messages()));
+    std::vector<LogMessage> messages;
+
+    std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(messages));
     if (!parserResult.result) {
         cancel->store(true);
         return ExecutorResult{std::nullopt, parserResult.errors};
@@ -56,8 +58,10 @@ ExecutorResult Executor::execute(const std::string &code) {
         result = std::nullopt;
     }
 
+    std::copy(context.messages().cbegin(), context.messages().cend(), std::back_inserter(messages));
+
     cancel->store(true);
-    return ExecutorResult{result, context.messages()};
+    return ExecutorResult{result, messages};
 }
 
 bool Executor::isBusy() const {
@@ -96,7 +100,7 @@ struct UserFunction {
         size_t i = 0;
         for (const auto& val : c.positional()) {
             if (i > expr.args.size()) {
-                return c.error(std::format("Too many arguments for function {}", expr.name));
+                return c.error("too many arguments for function {}", expr.name);
             }
 
             env->set(expr.args[i].name, val);
@@ -106,7 +110,7 @@ struct UserFunction {
         for (const auto& [name, val] : c.named()) {
             if (!name.starts_with("$")) {
                 if (defaults.find(name) == defaults.end()) {
-                    return c.error(std::format("Function {} does not take argument {}", expr.name, name));
+                    return c.error("function {} does not take argument {}", expr.name, name);
                 }
             }
 
@@ -145,7 +149,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
                     } else {
                         if (!shapes.empty() && !val.undefined()) {
-                            context.messages().push_back(LogMessage{LogMessage::Level::Error, "Cannot return both shapes and a value", ex.span});
+                            context.addMessage(LogMessage::Level::Error, ex.span, "cannot return both shapes and a value");
                             return undefined;
                         }
 
@@ -163,7 +167,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
             } else if constexpr (std::is_same_v<T, ast::VarExpr>) {
                 Value val;
                 if (!env->get(ex.name, val)) {
-                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Name '{}' not found", ex.name), ex.span});
+                    context.addMessage(LogMessage::Level::Warning, ex.span, "name '{}' not found", ex.name);
                     return undefined;
                 }
 
@@ -172,7 +176,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                 auto val = eval(context, env, &*ex.value);
 
                 if (!env->set(ex.name, val)) {
-                    context.messages().push_back(LogMessage{LogMessage::Level::Error, std::format("'{}' is already defined", ex.name), ex.span});
+                    context.addMessage(LogMessage::Level::Error, ex.span, "'{}' is already defined", ex.name);
                 }
 
                 return ex.return_ ? val : undefined;
@@ -181,13 +185,13 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
 
                 Value funcVal;
                 if (!env->get(ex.func, funcVal)) {
-                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Function '{}' not found", ex.func), ex.span});
+                    context.addMessage(LogMessage::Level::Warning, ex.span, "function '{}' not found", ex.func);
                     error = true;
                 }
 
                 auto func = funcVal.as<Function>();
                 if (!func && !error) {
-                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.typeName()), ex.span});
+                    context.addMessage(LogMessage::Level::Warning, ex.span, "'{}' is of type '{}', not a function", ex.func, funcVal.typeName());
                     error = true;
                 }
 
@@ -223,10 +227,9 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                 try {
                     result = (*func)(CallContext(context, positional, named, ex.span));
                 } catch (Standard_Failure &exc) {
-                    auto msg = std::format("Exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
-                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
+                    context.addMessage(LogMessage::Level::Warning, ex.span, "exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
                 } catch (...) {
-                    context.messages().push_back(LogMessage{LogMessage::Level::Error, "Unknown exception during processing", ex.span});
+                    context.addMessage(LogMessage::Level::Error, ex.span, "unknown exception during processing");
                 }
 
                 if (!highlighted.empty()) {
@@ -237,7 +240,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         std::copy(highlighted.begin(), highlighted.end(), std::back_inserter(combined));
                         return combined;
                     } else {
-                        //context->messages().push_back(LogMessage{LogMessage::Level::Warning, "Could not show highlighted argument because function did not return shapes"});
+                        //context->messages().push_back(LogMessage{LogMessage::Level::Warning, "could not show highlighted argument because function did not return shapes"});
                     }
                 }
 

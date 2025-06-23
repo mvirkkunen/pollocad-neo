@@ -53,12 +53,12 @@ gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval
 
     auto plist = pval->as<ValueList>();
     if (!plist) {
-        c.warning(std::format("invalid {} (not a list): {}", name, pval->display()));
+        c.warning("invalid {} (not a list): {}", name, pval->display());
         return default_;
     }
 
     if (plist->size() > 3) {
-        c.warning(std::format("invalid {} (excess elements: {})", name, plist->size()));
+        c.warning("invalid {} (excess elements: {})", name, plist->size());
     }
 
     gp_XYZ result = default_;
@@ -69,7 +69,7 @@ gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval
         } else if (const auto pnum = item.as<double>()) {
             result.SetCoord(i + 1, *pnum);
         } else {
-            c.warning(std::format("invalid {} (contains non-numeric item): {}", name, pval->display()));
+            c.warning("invalid {} (contains non-numeric item): {}", name, pval->display());
             return default_;
         }
     }
@@ -96,11 +96,11 @@ gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value
                 case 'f': r.SetY(+1.0); break;
                 case 'b': case 'd': r.SetZ(-1.0); break;
                 case 't': case 'u': r.SetZ(+1.0); break;
-                default: c.warning(std::format("invalid {} (contains unknown character): '{}'", name, dir)); return default_;
+                default: c.warning("invalid {} (contains unknown character): '{}'", name, dir); return default_;
             }
         }
     } else {
-        c.warning(std::format("invalid {} (invalid type): {}", name, pval->display()));
+        c.warning("invalid {} (invalid type): {}", name, pval->display());
         return default_;
     }
 
@@ -142,7 +142,7 @@ ShapeLocation parseShapeLocation(const CallContext &c, const gp_XYZ &defaultAnch
         if (const auto pspin = pspinVal->as<double>()) {
             loc.spin = *pspin;
         } else {
-            c.warning(std::format("invalid spin (type is not number): {}", pspinVal->display()));
+            c.warning("invalid spin (type is not number): {}", pspinVal->display());
         }
     }
 
@@ -151,7 +151,7 @@ ShapeLocation parseShapeLocation(const CallContext &c, const gp_XYZ &defaultAnch
     if (!orient.IsEqual(gp_XYZ{}, Precision::Confusion())) {
         loc.orient = orient;
     } else {
-        c.warning(std::format("invalid orient (magnitude is zero): {}", porient->display()));
+        c.warning("invalid orient (magnitude is zero): {}", porient->display());
     }
 
     return loc;
