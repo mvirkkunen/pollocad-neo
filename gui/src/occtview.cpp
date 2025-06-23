@@ -100,7 +100,7 @@ void OcctView::setHoveredPosition(int position) {
 
 void OcctView::setShowHighlightedShapes(bool show) {
     if (show != m_showHighlightedShapes) {
-        m_showHighlightedShapes = true;
+        m_showHighlightedShapes = show;
         emit showHighlightedShapesChanged();
         scheduleRenderJob([show, this]() { m_renderer->setShowHighlightedShapes(show); });
     }
@@ -445,6 +445,8 @@ void OcctRenderer::setHoveredPosition(int position) {
 
 void OcctRenderer::setShowHighlightedShapes(bool show) {
     m_showHighlightedShapes = show;
+
+    updateView();
 }
 
 void OcctRenderer::updateView() {
