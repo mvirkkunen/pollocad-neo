@@ -23,6 +23,6 @@ public:
     bool isBusy() const;
 
 private:
-    std::shared_ptr<ExecutionContext> m_currentContext;
+    std::atomic<std::shared_ptr<std::atomic_bool>> m_cancelCurrent;
     std::shared_ptr<Environment> m_defaultEnvironment;
 };

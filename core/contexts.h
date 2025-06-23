@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <format>
+#include <mutex>
 #include <vector>
 
 #include "value.h"
@@ -9,12 +10,15 @@
 
 class ExecutionContext {
 public:
-    void cancel() { m_canceled.store(true); }
-    bool isCanceled() { return m_canceled.load(); }
+    ExecutionContext(const std::shared_ptr<std::atomic_bool> canceled) : m_canceled(canceled) { }
+
+    void cancel() { m_canceled->store(true); }
+    bool isCanceled() { return m_canceled->load(); }
     std::vector<LogMessage> &messages() { return m_messages; }
 
 private:
-    std::atomic_bool m_canceled;
+    std::shared_ptr<std::atomic_bool> m_canceled;
+    std::mutex m_messagesLock;
     std::vector<LogMessage> m_messages;
 };
 
@@ -22,6 +26,8 @@ class CallContext {
 public:
     CallContext(ExecutionContext &execContext, std::vector<Value> positional, std::unordered_map<std::string, Value> named, const Span &span) :
         m_execContext(execContext), m_positional(positional), m_named(named), m_span(span) { }
+
+    ExecutionContext &execContext() const { return m_execContext; }
 
     bool canceled() const { return m_execContext.isCanceled(); }
 
@@ -99,8 +105,8 @@ public:
 
 private:
     ExecutionContext& m_execContext;
-    std::vector<Value> m_positional;
-    std::unordered_map<std::string, Value> m_named;
+    const std::vector<Value> m_positional;
+    const std::unordered_map<std::string, Value> m_named;
     const Span &m_span;
 };
 

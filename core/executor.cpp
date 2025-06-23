@@ -16,7 +16,7 @@ extern void register_builtins_shapes(Environment &env);
 namespace
 {
 
-Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::Expr* expr);
+Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr);
 
 }
 
@@ -32,33 +32,37 @@ Executor::Executor() {
 }
 
 ExecutorResult Executor::execute(const std::string &code) {
-    if (m_currentContext) {
-        m_currentContext->cancel();
+    auto cancel = std::make_shared<std::atomic_bool>();
+
+    auto cancelPrevious = m_cancelCurrent.exchange(cancel);
+    if (cancelPrevious) {
+        cancelPrevious->store(true);
     }
 
-    auto context = m_currentContext = std::make_shared<ExecutionContext>();
+    ExecutionContext context{cancel};
 
     const auto parserResult = parse(code);
 
-    std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(context->messages()));
+    std::copy(parserResult.errors.cbegin(), parserResult.errors.cend(), std::back_inserter(context.messages()));
     if (!parserResult.result) {
-        context->cancel();
+        cancel->store(true);
         return ExecutorResult{std::nullopt, parserResult.errors};
     }
 
     auto env = std::make_shared<Environment>(m_defaultEnvironment);
 
     std::optional<Value> result = eval(context, env, &*parserResult.result);
-    if (context->isCanceled()) {
+    if (context.isCanceled()) {
         result = std::nullopt;
     }
 
-    context->cancel();
-    return ExecutorResult{result, context->messages()};
+    cancel->store(true);
+    return ExecutorResult{result, context.messages()};
 }
 
 bool Executor::isBusy() const {
-    return m_currentContext && !m_currentContext->isCanceled();
+    auto cancelCurrent = m_cancelCurrent.load();
+    return cancelCurrent && !cancelCurrent->load();
 }
 
 namespace
@@ -76,7 +80,6 @@ void addHighlighted(ShapeList &shapes, const Value &value) {
 }
 
 struct UserFunction {
-    std::shared_ptr<ExecutionContext> context;
     std::weak_ptr<Environment> parentEnv;
     ast::LambdaExpr expr;
     std::unordered_map<std::string, Value> defaults;
@@ -116,24 +119,24 @@ struct UserFunction {
             }
         }
 
-        return eval(context, env, &*expr.body);
+        return eval(c.execContext(), env, &*expr.body);
     }
 };
 
-Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Environment> env, const ast::Expr* expr) {
-    if (context->isCanceled()) {
+Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr) {
+    if (context.isCanceled()) {
         return undefined;
     }
 
     return std::visit<Value>(
-        [env, context](const auto &ex) -> Value {
+        [env, &context](const auto &ex) -> Value {
             using T = std::decay_t<decltype(ex)>;
             if constexpr (std::is_same_v<T, ast::BlockExpr>) {
                 Value result = undefined;
                 ShapeList shapes;
 
                 for (const auto& expr : ex.exprs) {
-                    if (context->isCanceled()) {
+                    if (context.isCanceled()) {
                         return undefined;
                     }
 
@@ -142,7 +145,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                         std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
                     } else {
                         if (!shapes.empty() && !val.undefined()) {
-                            context->messages().push_back(LogMessage{LogMessage::Level::Error, "Cannot return both shapes and a value", ex.span});
+                            context.messages().push_back(LogMessage{LogMessage::Level::Error, "Cannot return both shapes and a value", ex.span});
                             return undefined;
                         }
 
@@ -160,7 +163,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
             } else if constexpr (std::is_same_v<T, ast::VarExpr>) {
                 Value val;
                 if (!env->get(ex.name, val)) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Name '{}' not found", ex.name), ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Name '{}' not found", ex.name), ex.span});
                     return undefined;
                 }
 
@@ -169,7 +172,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                 auto val = eval(context, env, &*ex.value);
 
                 if (!env->set(ex.name, val)) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Error, std::format("'{}' is already defined", ex.name), ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Error, std::format("'{}' is already defined", ex.name), ex.span});
                 }
 
                 return ex.return_ ? val : undefined;
@@ -178,13 +181,13 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 Value funcVal;
                 if (!env->get(ex.func, funcVal)) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Function '{}' not found", ex.func), ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("Function '{}' not found", ex.func), ex.span});
                     error = true;
                 }
 
                 auto func = funcVal.as<Function>();
                 if (!func && !error) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.typeName()), ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, std::format("'{}' is of type '{}', not a function", ex.func, funcVal.typeName()), ex.span});
                     error = true;
                 }
 
@@ -192,7 +195,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 std::vector<Value> positional;
                 for (const auto &ch : ex.positional) {
-                    if (context->isCanceled()) {
+                    if (context.isCanceled()) {
                         return undefined;
                     }
 
@@ -203,7 +206,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 std::unordered_map<std::string, Value> named;
                 for (const auto &[name, ch] : ex.named) {
-                    if (context->isCanceled()) {
+                    if (context.isCanceled()) {
                         return undefined;
                     }
 
@@ -218,12 +221,12 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
 
                 Value result = undefined;
                 try {
-                    result = (*func)(CallContext(*context, positional, named, ex.span));
+                    result = (*func)(CallContext(context, positional, named, ex.span));
                 } catch (Standard_Failure &exc) {
                     auto msg = std::format("Exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
-                    context->messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Warning, msg, ex.span});
                 } catch (...) {
-                    context->messages().push_back(LogMessage{LogMessage::Level::Error, "Unknown exception during processing", ex.span});
+                    context.messages().push_back(LogMessage{LogMessage::Level::Error, "Unknown exception during processing", ex.span});
                 }
 
                 if (!highlighted.empty()) {
@@ -242,7 +245,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
             } else if constexpr (std::is_same_v<T, ast::LambdaExpr>) {
                 std::unordered_map<std::string, Value> defaults;
                 for (const auto& arg : ex.args) {
-                    if (context->isCanceled()) {
+                    if (context.isCanceled()) {
                         return undefined;
                     }
 
@@ -254,7 +257,7 @@ Value eval(const std::shared_ptr<ExecutionContext> &context, std::shared_ptr<Env
                     defaults.emplace(arg.name, val);
                 }
 
-                return std::function<Value(const CallContext &)>{UserFunction{context, env, ex, defaults}};
+                return std::function<Value(const CallContext &)>{UserFunction{env, ex, defaults}};
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }
