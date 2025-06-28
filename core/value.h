@@ -21,6 +21,8 @@ using Undef = Undefined;
 
 using ValueList = std::vector<Value>;
 
+extern const ValueList emptyValueList;
+
 class Shape {
 public:
     Shape() { }
@@ -66,7 +68,13 @@ template <> struct ValueAsT<double> { using Type = double; };
 
 template <typename T> using ValueAs = ValueAsT<T>::Type;
 
-template <typename T> struct EmptyValue { static T value() { return T{}; } };
+//template <typename T> struct EmptyValue { static T value() { return T{}; } };
+
+template <typename T>
+ValueAs<T> emptyValueAs() {
+    static T empty{};
+    return empty;
+}
 
 class alignas(8) Value {
 public:
@@ -111,8 +119,8 @@ public:
 
     template <typename T>
     ValueAs<T> as() const {
-        static T empty = EmptyValue<T>::value();
-        return as<T>(empty);
+        //static T empty = EmptyValue<T>::value();
+        return as<T>(emptyValueAs<T>());
     }
 
     constexpr bool isUndefined() const { return m_value == c_undefinedVal; }
@@ -210,7 +218,9 @@ private:
     static Value constructBool(bool v);
 };
 
-
 constexpr const auto undefined = Value{};
 
-template <> struct EmptyValue<Function> { static Function value() { return [](CallContext &) -> Value { return undefined; }; } };
+//template <> struct EmptyValue<Function> { static Function value() { return [](CallContext &) -> Value { return undefined; }; } };
+
+template <> ValueAs<Function> emptyValueAs<Function>();
+

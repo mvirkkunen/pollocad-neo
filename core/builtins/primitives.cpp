@@ -1,6 +1,7 @@
 #include <format>
 
-#include "helpers.h"
+#include "contexts.h"
+//#include "helpers.h"
 
 namespace
 {
@@ -16,7 +17,7 @@ Value builtin_if(const CallContext &c) {
         }
 
         auto ec = c.empty();
-        bool truthy = (i == 0) ? condOrElse : condOrElse.as<Function>()(ec).truthy();
+        bool truthy = ((i == 0) ? condOrElse : condOrElse.as<Function>()(ec)).isTruthy();
 
         i++;
 
@@ -35,87 +36,68 @@ Value builtin_if(const CallContext &c) {
 
 auto builtin_un_op(std::function<double(double)> op) {
     return [op](CallContext &c) -> Value {
-        auto arg = c.get("argument");
-
-        if (arg->is<double>()) {
-            return op(arg->as<double>());
-        } else if (auto pla = a->as<ValueList>()) {
-            ValueList result;
-            result.reserve(pla->size());
-
-            for (int i = 0; i < pla->size(); i++) {
-                if ((*pla)[i].undefined()) {
-                    result.push_back(undefined);
-                } else {
-                    auto na = (*pla)[i].as<double>();
-                    if (!pna) {
-                        return c.error("list items must be either numbers or undefined");
-                    }
-
-                    result.push_back(op(*pna));
-                }
-            }
-
-            return result;
-        } else {
-            return c.error("operand must be either number or list");
-        }
-    };
-}
-
-auto builtin_bin_op(std::function<double(double, double)> op) {
-    return [op](const CallContext &c) -> Value {
-        if (c.positional().size() != 2) {
-            return c.error("malformed binary operation (incorrect argument count)");
-        }
-
-        auto a = c.get(0);
-        auto b = c.get(1);
-
-        if (auto pna = a->as<double>()) {
-            if (auto pnb = b->as<double>()) {
-                return op(*pna, *pnb);
-            } else {
-                return c.error("both operands must be either numbers or lists");
-            }
-        } else if (auto pla = a->as<ValueList>()) {
-            if (auto plb = b->as<ValueList>()) {
+        return c.arg("operand").overload(
+            [op](double value) -> Value { return op(value); },
+            [op](const ValueList &vec) -> Value {
                 ValueList result;
-                result.reserve(pla->size());
+                result.reserve(vec.size());
 
-                for (int i = 0; i < pla->size(); i++) {
-                    if ((*pla)[i].undefined() || i >= plb->size() || (*plb)[i].undefined()) {
-                        result.push_back(undefined);
+                for (const auto &item : vec) {
+                    if (item.is<double>()) {
+                        result.push_back(op(item.as<double>()));
                     } else {
-                        auto pna = (*pla)[i].as<double>();
-                        if (!pna) {
-                            return c.error("list items must be either numbers or undefined");
-                        }
-
-                        auto pnb = (*plb)[i].as<double>();
-                        if (!pna) {
-                            return c.error("list items must be either numbers or undefined");
-                        }
-
-                        result.push_back(op(*pna, *pnb));
+                        result.push_back(undefined);
                     }
                 }
 
                 return result;
-            } else {
-                return c.error("both operands must be either numbers or lists");
             }
-        } else {
-            return c.error("both operands must be either numbers or lists");
-        }
+        );
+    };
+}
+
+auto builtin_bin_op(std::function<double(double, double)> op) {
+    return [op](CallContext &c) -> Value {
+        return c.arg("left operand").overload(
+            [&](double a) -> Value {
+                auto b = c.arg("right operand 1").as<double>();
+                return op(a, b);
+            },
+            [&](const ValueList &a) -> Value {
+                auto ab = c.arg("right operand 2");
+                auto b = ab.as<ValueList>();
+                if (ab.asAny().is<ValueList>() && a.size() != b.size()) { // TODO ugly
+                    return c.error("lists must be of equal size for binary operators");
+                }
+
+                ValueList result;
+                result.reserve(a.size());
+
+                for (int i = 0; i < a.size(); i++) {
+                    auto ai = a.at(i);
+                    auto bi = b.at(i);
+
+                    if ((ai && !ai.is<double>()) && (bi && !bi.is<double>())) {
+                        return c.error("list items must be either numbers or undefined");
+                    } else if (!ai || !bi) {
+                        result.push_back(undefined);
+                    } else {
+                        result.push_back(op(ai.as<double>(), bi.as<double>()));
+                    }
+                }
+
+                return result;
+            }
+        );
     };
 }
 
 constexpr auto builtin_equal(bool equal) {
     return [equal](const CallContext &c) {
         bool result = equal;
-        for (size_t i = 0; i < c.positional().size() - 1; i++) {
-            if ((*c.get(i) == *c.get(i + 1)) != equal) {
+        const auto &positional = c.allPositional();
+        for (size_t i = 0; i < positional.size() - 1; i++) {
+            if ((positional.at(i) == positional.at(i + 1)) != equal) {
                 return false;
             }
         }
@@ -124,87 +106,71 @@ constexpr auto builtin_equal(bool equal) {
     };
 }
 
-Value builtin_logical_not(const CallContext &c) {
-    auto pval = c.get(0);
-    return pval && pval->truthy();
+Value builtin_logical_not(CallContext &c) {
+    return c.arg("operand").asAny().isTruthy();
 }
 
-Value builtin_logical_and(const CallContext &c) {
-    auto pcond = c.get(0);
-    if (!pcond) {
-        return undefined;
+Value builtin_logical_and(CallContext &c) {
+    auto cond = c.arg("left operand").asAny();
+    if (!cond.isTruthy()) {
+        return cond;
     }
 
-    if (!pcond->truthy()) {
-        return *pcond;
-    }
-
-    auto presult = c.get(1);
-    return presult ? *presult : undefined;
+    return c.arg("right operand").asAny();
 }
 
-Value builtin_logical_or(const CallContext &c) {
-    auto pcond = c.get(0);
-    if (pcond && pcond->truthy()) {
-        return *pcond;
+Value builtin_logical_or(CallContext &c) {
+    auto cond = c.arg("left operand").asAny();
+    if (cond.isTruthy()) {
+        return cond;
     }
 
-    auto presult = c.get(1);
-    return presult ? *presult : undefined;
+    return c.arg("right operand").asAny();
 }
 
 
-Value builtin_index(const CallContext &c) {
-    auto pval = c.get(0);
-    if (!pval) {
-        return c.error("malformed indexing operation (no value to index)");
-    }
+Value builtin_index(CallContext &c) {
+    auto indexee = c.arg("indexee");
+    auto index = c.arg("index");
 
-    auto pindex = c.get(1);
-    if (!pindex) {
-        return c.error("malformed indexing operation (missing index value)");
-    }
+    return indexee.overload(
+        [&](const ValueList &list) -> Value {
+            return index.overload(
+                [&](double d) -> Value {
+                    size_t i = static_cast<size_t>(d);
+                    return (i < list.size()) ? list[i] : undefined;
+                },
+                [&](const std::string &str) -> Value {
+                    std::vector<Value> result;
+                    for (const char ch : str) {
+                        ssize_t index = -1;
+                        switch (ch) {
+                            case 'x': case 'r': index = 0; break;
+                            case 'y': case 'g': index = 1; break;
+                            case 'z': case 'b': index = 2; break;
+                            case 'w': case 'a': index = 3; break;
+                        }
 
-    if (auto plist = pval->as<ValueList>()) {
-        if (auto pnum = pindex->as<double>()) {
-            size_t index = static_cast<size_t>(*pnum);
-            return (index < plist->size()) ? (*plist)[index] : undefined;
-        } else if (auto pstr = pindex->as<std::string>()) {
-            std::vector<Value> result;
-            for (const char ch : *pstr) {
-                ssize_t index = -1;
-                switch (ch) {
-                    case 'x': case 'r': index = 0; break;
-                    case 'y': case 'g': index = 1; break;
-                    case 'z': case 'b': index = 2; break;
-                    case 'w': case 'a': index = 3; break;
+                        if (index == -1) {
+                            return c.error("Invalid swizzle access: .{}", str);
+                        }
+
+                        result.push_back(index < list.size() ? list[index] : undefined);
+                    }
+
+                    if (result.size() == 1) {
+                        return result[0];
+                    }
+
+                    return result;
                 }
-
-                if (index == -1) {
-                    return c.error("Invalid swizzle access: .{}", *pstr);
-                }
-
-                result.push_back(index < plist->size() ? (*plist)[index] : undefined);
-            }
-
-            if (result.size() == 1) {
-                return result[0];
-            }
-
-            return result;
-        } else {
-            return c.error("cannot index list with value of type {}", pindex->typeName());
+            );
+        },
+        [&](const std::string &str) -> Value {
+            size_t i = static_cast<size_t>(index.as<double>());
+            return (i < str.size()) ? Value{std::string(1, str.at(i))} : undefined;
         }
-    } else if (auto pstring = pval->as<std::string>()) {
-        if (auto pnum = pindex->as<double>()) {
-            size_t index = static_cast<size_t>(*pnum);
-            return (index < pstring->size()) ? Value{std::string(1, (*pstring).at(index))} : undefined;
-        } else {
-            return c.error("cannot index string with value of type {}", pindex->typeName());
-        }
-    } else {
-        return c.error("Cannot index value of type {}", pval->typeName());
-    }
+    );
 }
 
 Value builtin_list(CallContext &c) {
@@ -218,28 +184,30 @@ Value builtin_concat(const CallContext &c) {
         return undefined;
     }
 
-    if (it->as<ValueList>()) {
+    // TODO: maybe make some kind of rest() function?
+
+    if (it->is<ValueList>()) {
         ValueList result;
 
         for (; it != end; it++) {
             if (!*it) {
                 continue;
-            } else if (auto plist = it->as<ValueList>()) {
-                std::copy(plist->cbegin(), plist->cend(), std::back_inserter(result));
+            } else if (it->is<ValueList>()) {
+                std::copy(it->as<ValueList>().cbegin(), it->as<ValueList>().cend(), std::back_inserter(result));
             } else {
                 return c.error("concat arguments must all be of the same type or undefined (found list, then {})", it->typeName());
             }
         }
 
         return result;
-    } else if (it->as<std::string>()) {
+    } else if (it->is<std::string>()) {
         std::string result;
 
         for (; it != end; it++) {
             if (!*it) {
                 continue;
-            } else if (auto pstr = it->as<std::string>()) {
-                result += *pstr;
+            } else if (it->is<std::string>()) {
+                result += it->as<std::string>();
             } else {
                 return c.error("concat arguments must all be of the same type or undefined (found string, then {})", it->typeName());
             }

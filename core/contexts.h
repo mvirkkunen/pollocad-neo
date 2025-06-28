@@ -8,6 +8,28 @@
 #include "value.h"
 #include "logmessage.h"
 
+class Argument;
+class ArgumentList;
+
+namespace
+{
+
+struct Void { };
+
+template <typename F>
+using OverloadArgType =
+    std::conditional_t<std::is_invocable_v<F, Undefined>, Undefined,
+    std::conditional_t<std::is_invocable_v<F, double>, double,
+    std::conditional_t<std::is_invocable_v<F, std::string>, std::string,
+    std::conditional_t<std::is_invocable_v<F, ValueList>, ValueList,
+    std::conditional_t<std::is_invocable_v<F, ShapeList>, ShapeList,
+    std::conditional_t<std::is_invocable_v<F, Function>, Function,
+    std::conditional_t<std::is_invocable_v<F, Argument>, Argument,
+    std::conditional_t<std::is_invocable_v<F, ArgumentList>, ArgumentList,
+    std::conditional_t<std::is_invocable_v<F, bool>, bool, void>>>>>>>>>;
+
+}
+
 class ExecutionContext {
 public:
     ExecutionContext(const std::shared_ptr<std::atomic_bool> canceled) : m_canceled(canceled) { }
@@ -28,42 +50,7 @@ private:
     std::vector<LogMessage> m_messages;
 };
 
-class CallContext;
-
-class Argument {
-public:
-    Argument(CallContext &callContext, const char *name, const Value &value) : m_callContext(callContext), m_name(name), m_value(value) { }
-    ~Argument();
-
-    template <typename T>
-    ValueAs<T> as() const {
-        if (m_value.as<T>()) {
-            m_expectedTypes = 0;
-        } else {
-            m_expectedTypes = 1 << static_cast<int>(Value::typeOf<T>());
-        }
-
-        return m_value.as<T>();
-    }
-
-    template <typename T>
-    ValueAs<T> as(T default_) const {
-        return m_value.isUndefined() ? default_ : as<T>();
-    }
-
-    Value &asAny() const {
-        m_expectedTypes = 0;
-        return m_value;
-    }
-
-    operator bool() const { return !m_value.isUndefined(); }
-
-private:
-    const CallContext &m_callContext;
-    const char *m_name;
-    const Value &m_value;
-    uint8_t m_expectedTypes = 0;
-};
+class Argument;
 
 class CallContext {
 public:
@@ -74,77 +61,13 @@ public:
 
     bool canceled() const { return m_execContext.isCanceled(); }
 
-    Argument arg(const char *name) {
-        auto value = (m_nextPositional <= m_positional.size()) ? m_positional.at(m_nextPositional++) : undefined;
-        return Argument(*this, name, value);
-    }
-
-    /*template <typename T>
-    ValueAs<T> positional(const std::string &name) {
-        Value val = positional(name);
-        if (val.isUndefined()) {
-            error("required parameter {} not specified", name);
-        } else if (!val.is<T>()) {
-            error("parameter {} is of the incorrect type", name);
-        } else {
-
-        }
-    }*/
-
-    Argument named(const char *name) {
-        auto it = m_named.find(name);
-        auto value = (it != m_named.end() ? it->second : undefined);
-        return Argument(*this, name, value);
-    }
-
+    Argument arg(const char *name);
+    Argument named(const char *name) const;
     //std::span<Value const> rest() const;
 
     const std::vector<Value> &allPositional() const { return m_positional; }
 
     const std::unordered_map<std::string, Value> &allNamed() const { return m_named; }
-
-    //const std::vector<Value> &positional() const { return m_positional; }
-
-    //const std::unordered_map<std::string, Value> &named() const { return m_named; }
-
-    /*const Value *get(size_t index) const {
-        return index < m_positional.size() ? &m_positional.at(index) : nullptr;
-    }
-
-    const Value *get(const std::string &name) const {
-        auto it = m_named.find(name);
-        return it != m_named.end() ? &it->second : nullptr;
-    }
-
-    template <typename T>
-    const OptionalValue<T> get(size_t index, bool typeError=true) const {
-        auto v = get(index);
-        if (!v) {
-            return {};
-        }
-
-        auto tv = v->as<T>();
-        if (!tv && typeError) {
-            warning("parameter {}: expected {}, got {}", index + 1, Value::typeName(Value::typeOf<T>()), v->typeName());
-        }
-
-        return tv;
-    }
-
-    template <typename T>
-    const OptionalValue<T> get(const std::string &name, bool typeError=true) const {
-        auto v = get(name);
-        if (!v) {
-            return {};
-        }
-
-        auto tv = v->as<T>();
-        if (!tv && typeError) {
-            warning("parameter {}: expected {}, got {}", name, Value::typeName(Value::typeOf<T>()), v->typeName());
-        }
-
-        return tv;
-    }*/
 
     const ShapeList children() const;
 
@@ -185,6 +108,186 @@ private:
     const Span &m_span;
     size_t m_nextPositional = 0;
 };
+
+class ArgumentList;
+
+class Argument {
+public:
+    Argument(const CallContext &callContext, const char *name, const Value &value) : m_callContext(callContext), m_name(name), m_value(value) { }
+
+    const char *name() const {
+        return m_name;
+    }
+
+    template <typename T>
+    bool is() const {
+        return m_value.is<T>();
+    }
+
+    template <typename T>
+    ValueAs<T> as() const {
+        if (m_value.isUndefined()) {
+            m_callContext.error("missing required argument {}", m_name);
+        } else if (!m_value.is<T>()) {
+            m_callContext.error("invalid {}: type is {}, expected {}", m_name, m_value.typeName(), Value::typeName(Value::typeOf<T>()));
+        }
+
+        return m_value.as<T>();
+    }
+
+    template <typename T>
+    ValueAs<T> as(T default_) const {
+        return m_value ? as<T>() : default_;
+    }
+
+    ArgumentList asList() const;
+
+    const Value &asAny() const {
+        return m_value;
+    }
+
+    bool isTruthy() const {
+        return m_value.isTruthy();
+    }
+
+    template <typename Head, typename... Rest>
+    auto overload(Head &&head, Rest&&... rest) const -> decltype(head({})) const {
+        using ReturnType = decltype(head({}));
+
+        std::conditional_t<std::is_same_v<ReturnType, void>, Void, ReturnType> ret;
+        if (!overload_(ret, head, rest...)) {
+            std::ostringstream ss;
+            overloadTypeError(ss, head, rest...);
+            m_callContext.error("invalid {}: type is {}, expected one of: {}", m_name, m_value.typeName(), ss.str());
+        }
+
+        if constexpr (!std::is_same_v<ReturnType, void>) {
+            return ret;
+        }
+    }
+
+    template <typename... Args>
+    Value error(std::format_string<Args...> fmt, Args&&... args) const {
+        return m_callContext.error("invalid {}: {}", m_name, std::format(fmt, std::forward<Args>(args)...));
+    }
+
+    template <typename... Args>
+    void warning(std::format_string<Args...> fmt, Args&&... args) const {
+        m_callContext.warning("invalid {}: {}", m_name, std::format(fmt, std::forward<Args>(args)...));
+    }
+
+    operator bool() const { return !m_value.isUndefined(); }
+
+private:
+    const CallContext &m_callContext;
+    const char *m_name;
+    const Value &m_value;
+
+    template <typename Ret, typename Head, typename... Rest>
+    bool overload_(Ret &ret, Head&& head, Rest&&... rest) const {
+        using Type = OverloadArgType<Head>;
+
+        if constexpr (std::is_same_v<Type, Argument>) {
+            if constexpr (std::is_same_v<Ret, Void>) {
+                head(*this);
+            } else {
+                ret = head(*this);
+            }
+
+            return true;
+        } else if constexpr (std::is_same_v<Type, ArgumentList>) {
+            if (m_value.is<ValueList>()) {
+                if constexpr (std::is_same_v<Ret, Void>) {
+                    head(asList());
+                } else {
+                    ret = head(asList());
+                }
+
+                return true;
+            }
+        } else if (m_value.is<Type>()) {
+            if constexpr (std::is_same_v<Ret, Void>) {
+                head(m_value.as<Type>());
+            } else {
+                ret = head(m_value.as<Type>());
+            }
+
+            return true;
+        }
+
+        return overload_(ret, rest...);
+    }
+
+    template <typename Ret>
+    bool overload_(Ret &ret) const {
+        return false;
+    }
+
+    template <typename Head, typename... Rest>
+    void overloadTypeError(std::ostringstream &ss, Head&& head, Rest&... rest) const {
+        if (ss.tellp() != 0) {
+            ss << ", ";
+        }
+
+        using Type = OverloadArgType<Head>;
+
+        if constexpr (std::is_same_v<Type, Argument>) {
+            ss << "(any type; this should not be an error)";
+        } else if constexpr (std::is_same_v<Type, ArgumentList>) {
+            ss << "list";
+        } else {
+            ss << Value::typeName(Value::typeOf<Type>());
+        }
+
+        overloadTypeError(ss, rest...);
+    }
+
+    void overloadTypeError(std::ostringstream &ss) const { }
+};
+
+class ArgumentList {
+public:
+    class iterator {
+    public:
+        iterator(const ArgumentList& list, ValueList::const_iterator iter) : m_list(list), m_iter(iter) { }
+
+        const Argument operator*() const { return Argument(*m_list.m_callContext, m_list.m_name, *m_iter); }
+        bool operator==(const iterator& other) const { return m_iter == other.m_iter; }
+        ValueList::const_iterator operator++() { return m_iter++; }
+
+    private:
+        const ArgumentList &m_list;
+        ValueList::const_iterator m_iter;
+    };
+
+    ArgumentList() { }
+    ArgumentList(const CallContext *callContext, const char *name, const ValueList &list) : m_callContext(callContext), m_name(name), m_list(list) { }
+
+    size_t const size() const {
+        return m_list.size();
+    }
+
+    const Argument at(size_t index) const {
+        return Argument(*m_callContext, m_name, m_list.at(index));
+    }
+
+    iterator begin() const {
+        return iterator(*this, m_list.cbegin());
+    }
+
+    iterator end() const {
+        return iterator(*this, m_list.cend());
+    }
+
+private:
+    const CallContext *m_callContext = nullptr;
+    const char *m_name = nullptr;
+    const ValueList &m_list = emptyValueList;
+};
+
+inline ArgumentList Argument::asList() const {
+    return ArgumentList(&m_callContext, m_name, as<ValueList>());
+}
 
 class Environment {
 public:

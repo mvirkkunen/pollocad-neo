@@ -19,81 +19,81 @@ struct EdgeFilters {
     TopoDS_Shape shape;
 };
 
-void parseEdgeSpec(const CallContext &c, std::vector<Shape> &highlightOut, std::vector<EdgeFilters> &out, double r, const Value &spec) {
-    if (auto pstr = spec.as<std::string>()) {
-        std::istringstream ss(*pstr);
-        std::string specItem;
-        while (ss >> specItem) {
-            EdgeFilters filter{r};
-            for (const auto ch : specItem) {
-                switch (ch) {
-                    case 'x': filter.dir.SetX(1.0); break;
-                    case 'y': filter.dir.SetY(1.0); break;
-                    case 'z': filter.dir.SetZ(1.0); break;
-                    case 'r': filter.bound.SetX(1.0); break;
-                    case 'f': filter.bound.SetY(1.0); break;
-                    case 't': filter.bound.SetZ(1.0); break;
-                    case 'l': filter.bound.SetX(0.0); break;
-                    case 'n': filter.bound.SetY(0.0); break;
-                    case 'b': filter.bound.SetZ(0.0); break;
-                    default: c.warning("Invalid edge specification: {}", *pstr); return;
+void parseEdgeSpec(const Argument &arg, std::vector<Shape> &highlightOut, std::vector<EdgeFilters> &out, double r) {
+    arg.overload(
+        [&](const std::string &str) {
+            std::istringstream ss(str);
+            std::string specItem;
+            while (ss >> specItem) {
+                EdgeFilters filter{r};
+                for (const auto ch : specItem) {
+                    switch (ch) {
+                        case 'x': filter.dir.SetX(1.0); break;
+                        case 'y': filter.dir.SetY(1.0); break;
+                        case 'z': filter.dir.SetZ(1.0); break;
+                        case 'r': filter.bound.SetX(1.0); break;
+                        case 'f': filter.bound.SetY(1.0); break;
+                        case 't': filter.bound.SetZ(1.0); break;
+                        case 'l': filter.bound.SetX(0.0); break;
+                        case 'n': filter.bound.SetY(0.0); break;
+                        case 'b': filter.bound.SetZ(0.0); break;
+                        default: arg.warning("invalid edge specification: {}", str); return;
+                    }
                 }
+
+                out.push_back(filter);
+
+                next:;
             }
-
+        },
+        [&](const ShapeList &shape) {
+            EdgeFilters filter{r};
+            filter.bbox = getBoundingBox(shape);
             out.push_back(filter);
-
-            next:;
+            std::copy_if(shape.begin(), shape.end(), std::back_inserter(highlightOut), [](const Shape &sh) { return sh.hasProp("highlight"); });
         }
-    } else if (auto pshape = spec.as<ShapeList>()) {
-        EdgeFilters filter{r};
-        filter.bbox = getBoundingBox(*pshape);
-        out.push_back(filter);
-        std::copy_if(pshape->begin(), pshape->end(), std::back_inserter(highlightOut), [](const Shape &sh) { return sh.hasProp("highlight"); });
-    } else {
-        c.warning("Invalid edge specification: {}", spec.display());
-    }
+    );
 }
 
 template <typename Algorithm>
-Value builtin_chamfer_filler(const CallContext &c) {
+Value builtin_chamfer_filler(CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
         return undefined;
     }
 
-    auto pr = c.get<double>(1);
-    double r = pr ? std::max(*pr, 0.0) : 1.0;
+    auto selector = c.arg("edge_selector");
 
-    auto plistOrSpec = c.get(0);
-    if (!plistOrSpec) {
+    auto ar = c.named("r");
+    double r = ar ? std::max(ar.as<double>(), 0.0) : 1.0;
+
+    if (!selector) {
         return children;
     }
 
     ShapeList result;
     std::vector<EdgeFilters> filters;
 
-    if (auto plist = plistOrSpec->as<ValueList>()) {
-        for (const auto &spec : *plist) {
-            if (const auto ppair = spec.as<ValueList>()) {
-                if (ppair->size() == 0 || ppair->size() > 2) {
-                    c.warning("Invalid edge specification pair: {}", spec.display());
-                    continue;
-                }
+    selector.overload(
+        [&](const ArgumentList &list) {
+            for (const auto &spec : list) {
+                spec.overload(
+                    [&](const ArgumentList &pair) {
+                        if (pair.size() != 2) {
+                            spec.warning("invalid number of elements in pair: {}", spec.asAny().display());
+                            return;
+                        }
 
-                auto pr = ppair->size() == 2 ? (*ppair)[1].as<double>() : r;
-                if (!pr) {
-                    c.warning("Invalid radius specification: {}", (*ppair)[1].display());
-                    continue;
-                }
+                        auto r = pair.at(1).as<double>();
 
-                parseEdgeSpec(c, result, filters, *pr, (*ppair)[0]);
-            } else {
-                parseEdgeSpec(c, result, filters, r, spec);
+                        parseEdgeSpec(pair.at(0), result, filters, r);
+                    },
+                    [&](const Argument &arg) { parseEdgeSpec(arg, result, filters, r); }
+                );
             }
-        }
-    } else {
-        parseEdgeSpec(c, result, filters, r, *plistOrSpec);
-    }
+        },
+        [&](const Argument &arg) { parseEdgeSpec(arg, result, filters, r); }
+    );
 
     for (const auto &ch : children) {
         Algorithm algo(ch.shape());

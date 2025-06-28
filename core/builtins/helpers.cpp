@@ -12,22 +12,23 @@
 namespace
 {
 
-gp_XYZ parseAnchor(const CallContext &c, const Value *pval, const gp_XYZ &default_) {
-    if (!pval) {
+gp_XYZ parseAnchor(const Argument &arg, const gp_XYZ &default_) {
+    if (!arg) {
         return gp_XYZ{};
     }
 
-    if (const auto pstr = pval->as<std::string>()) {
-        if (pstr->empty()) {
+    if (arg.is<std::string>()) {
+        auto str = arg.as<std::string>();
+        if (str.empty()) {
             return gp_XYZ{};
         }
 
-        if (*pstr == "c") {
+        if (str == "c") {
             return default_ * 0.5;
         }
     }
 
-    return (default_ - parseDirection(c, "anchor", pval, gp_XYZ{})) * 0.5;
+    return (default_ - parseDirection(arg, gp_XYZ{})) * 0.5;
 }
 
 }
@@ -46,30 +47,29 @@ Bnd_Box getBoundingBox(const TopoDS_Shape& shape) {
     return bbox;
 }
 
-gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval, gp_XYZ default_) {
-    if (!pval) {
+gp_XYZ parseVec(const Argument &arg, gp_XYZ default_, int elements) {
+    if (!arg) {
         return default_;
     }
 
-    auto plist = pval->as<ValueList>();
-    if (!plist) {
-        c.warning("invalid {} (not a list): {}", name, pval->display());
+    auto list = arg.as<ValueList>();
+    if (list.empty()) {
         return default_;
     }
 
-    if (plist->size() > 3) {
-        c.warning("invalid {} (excess elements: {})", name, plist->size());
+    if (list.size() > elements) {
+        arg.warning("excess elements, expected 3, got {}", list.size());
     }
 
     gp_XYZ result = default_;
-    for (int i = 0; i < 3 && i < plist->size(); i++) {
-        const auto &item = (*plist)[i];
-        if (item.undefined()) {
+    for (int i = 0; i < 3 && i < list.size(); i++) {
+        const auto &item = list.at(i);
+        if (item.isUndefined()) {
             continue;
-        } else if (const auto pnum = item.as<double>()) {
-            result.SetCoord(i + 1, *pnum);
+        } else if (item.is<double>()) {
+            result.SetCoord(i + 1, item.as<double>());
         } else {
-            c.warning("invalid {} (contains non-numeric item): {}", name, pval->display());
+            arg.error("contains non-numeric item: {}", item.display());
             return default_;
         }
     }
@@ -77,79 +77,75 @@ gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval
     return result;
 }
 
-gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value *pval, gp_XYZ default_) {
-    if (!pval) {
-        return default_;
-    }
-
-    gp_XYZ r{};
-    if (pval->as<ValueList>()) {
-        r = parseVec(c, name, pval, default_);
-    } else if (auto pdir = pval->as<std::string>()) {
-        const auto &dir = *pdir;
-
-        for (const char ch : dir) {
-            switch (ch) {
-                case 'l': r.SetX(-1.0); break;
-                case 'r': r.SetX(+1.0); break;
-                case 'n': r.SetY(-1.0); break;
-                case 'f': r.SetY(+1.0); break;
-                case 'b': case 'd': r.SetZ(-1.0); break;
-                case 't': case 'u': r.SetZ(+1.0); break;
-                default: c.warning("invalid {} (contains unknown character): '{}'", name, dir); return default_;
+gp_XYZ parseDirection(const Argument &arg, gp_XYZ default_) {
+    gp_XYZ r = default_;
+    arg.overload(
+        [&](const ValueList &list) {
+            r = parseVec(arg, default_);
+        },
+        [&](const std::string &str) { // TODO: const &
+            for (const char ch : str) {
+                switch (ch) {
+                    case 'l': r.SetX(-1.0); break;
+                    case 'r': r.SetX(+1.0); break;
+                    case 'n': r.SetY(-1.0); break;
+                    case 'f': r.SetY(+1.0); break;
+                    case 'b': case 'd': r.SetZ(-1.0); break;
+                    case 't': case 'u': r.SetZ(+1.0); break;
+                    default: arg.warning("contains unknown character: '{}'", ch); break;
+                }
             }
-        }
-    } else {
-        c.warning("invalid {} (invalid type): {}", name, pval->display());
-        return default_;
-    }
+
+            out:;
+        },
+        [&](const Undefined &) { }
+    );
 
     return r;
 }
 
-gp_XYZ parseXYZ(const CallContext &c, double default_) {
+gp_XYZ parseXYZ(const CallContext &c, const Argument &arg, double default_) {
     gp_XYZ vec{default_, default_, default_};
 
-    if (auto l = c.get<ValueList>(0)) {
-        for (int i = 0; i < l->size() && i < 3; i++) {
-            if (auto n = (*l)[i].as<double>()) {
-                vec.SetCoord(i + 1, *n);
-            }
-        }
+    if (arg) {
+        vec = parseVec(arg);
     }
 
-    if (auto n = c.get<double>("x")) {
-        vec.SetX(*n);
+    auto x = c.named("x");
+    if (x) {
+        vec.SetX(x.as<double>());
     }
 
-    if (auto n = c.get<double>("y")) {
-        vec.SetY(*n);
+    auto y = c.named("y");
+    if (y) {
+        vec.SetY(y.as<double>());
     }
 
-    if (auto n = c.get<double>("z")) {
-        vec.SetZ(*n);
+    auto z = c.named("z");
+    if (z) {
+        vec.SetZ(z.as<double>());
     }
 
     return vec;
 }
 
-gp_XY parseXY(const CallContext &c, double default_) {
+gp_XY parseXY(const CallContext &c, const Argument &arg, double default_) {
     gp_XY vec{default_, default_};
 
-    if (auto l = c.get<ValueList>(0)) {
-        for (int i = 0; i < l->size() && i < 2; i++) {
-            if (auto n = (*l)[i].as<double>()) {
-                vec.SetCoord(i + 1, *n);
-            }
-        }
+    if (arg) {
+        auto xy = parseVec(arg, {default_, default_, default_}, 2);
+        vec.SetX(xy.X());
+        vec.SetY(xy.Y());
     }
 
-    if (auto n = c.get<double>("x")) {
-        vec.SetX(*n);
+    auto x = c.named("x");
+    if (x) {
+        vec.SetX(x.as<double>());
     }
 
-    if (auto n = c.get<double>("y")) {
-        vec.SetY(*n);
+    auto y = c.named("y");
+    if (y) {
+        vec.SetY(y.as<double>());
     }
 
     return vec;
@@ -158,22 +154,21 @@ gp_XY parseXY(const CallContext &c, double default_) {
 ShapeLocation parseShapeLocation(const CallContext &c, const gp_XYZ &defaultAnchor) {
     ShapeLocation loc;
 
-    loc.anchor = parseAnchor(c, c.get("anchor"), defaultAnchor);
+    loc.anchor = parseAnchor(c.named("anchor"), defaultAnchor);
 
-    if (const auto pspinVal = c.get("spin")) {
-        if (const auto pspin = pspinVal->as<double>()) {
-            loc.spin = *pspin;
-        } else {
-            c.warning("invalid spin (type is not number): {}", pspinVal->display());
-        }
+    auto aspin = c.named("spin");
+    if (aspin) {
+        loc.spin = aspin.as<double>();
     }
 
-    auto porient = c.get("orient");
-    auto orient = parseDirection(c, "orient", porient, c_xyzUp);
-    if (!orient.IsEqual(gp_XYZ{}, Precision::Confusion())) {
-        loc.orient = orient;
-    } else {
-        c.warning("invalid orient (magnitude is zero): {}", porient->display());
+    auto aorient = c.named("orient");
+    if (aorient) {
+        auto orient = parseDirection(aorient, c_xyzUp);
+        if (!orient.IsEqual(gp_XYZ{}, Precision::Confusion())) {
+            loc.orient = orient;
+        } else {
+            aorient.warning("magnitude is zero");
+        }
     }
 
     return loc;

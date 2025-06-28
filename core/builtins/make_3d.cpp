@@ -23,20 +23,18 @@ const uint8_t polloStl[] = {
 };
 
 Value addShapeChildren(const CallContext &c, ShapeList shape) {
-    auto childrenp = c.get<Function>("$children");
-    if (childrenp) {
-        auto children = (*childrenp)(c.with("$parent", shape));
-        // TODO FIXME
-        /*if (children.error()) {
-            return undefined;
-        }*/
+    auto achildren = c.named("$children");
+    if (achildren.is<Function>()) {
+        auto cc = c.with("$parent", shape);
+        auto children = achildren.as<Function>()(cc);
 
-        if (children.undefined()) {
+        if (!children) {
             return shape;
         }
 
-        if (auto childShapes = children.as<ShapeList>()) {
-            std::move(childShapes->begin(), childShapes->end(), std::back_inserter(shape));
+        if (children.is<ShapeList>()) {
+            auto childShapes = children.as<ShapeList>();
+            std::move(childShapes.begin(), childShapes.end(), std::back_inserter(shape));
         } else {
             return c.error("Invalid children for shape");
         }
@@ -45,9 +43,9 @@ Value addShapeChildren(const CallContext &c, ShapeList shape) {
     return shape;
 }
 
-Value builtin_box(const CallContext &c) {
+Value builtin_box(CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{-1.0, -1.0, -1.0};
-    const auto size = parseXYZ(c, 1.0);
+    const auto size = parseXYZ(c, c.arg("size"), 1.0);
     const auto location = parseShapeLocation(c, defaultAnchor);
 
     if (size.X() <= Precision::Confusion() || size.Y() <= Precision::Confusion() || size.Z() <= Precision::Confusion()) {
@@ -62,18 +60,18 @@ Value builtin_box(const CallContext &c) {
 Value builtin_cyl(const CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{0.0, 0.0, -1.0};
 
-    auto pr1 = c.get<double>("r1");
-    auto pr2 = c.get<double>("r2");
-    auto pd1 = c.get<double>("d1");
-    auto pd2 = c.get<double>("d2");
-    auto pr = c.get<double>("r");
-    auto pd = c.get<double>("d");
+    auto ar1 = c.named("r1");
+    auto ar2 = c.named("r2");
+    auto ad1 = c.named("d1");
+    auto ad2 = c.named("d2");
+    auto ar = c.named("r");
+    auto ad = c.named("d");
 
-    double r1 = pr1 ? *pr1 : pd1 ? *pd1 * 0.5 : pr ? *pr : pd ? *pd * 0.5 : 1.0;
-    double r2 = pr2 ? *pr2 : pd2 ? *pd2 * 0.5 : pr ? *pr : pd ? *pd * 0.5 : 1.0;
+    double r = ar ? ar.as<double>() : ad ? ad.as<double>() * 0.5 : 1.0;
+    double r1 = ar1 ? ar1.as<double>() : ad1 ? ad1.as<double>() * 0.5 : r;
+    double r2 = ar2 ? ar2.as<double>() : ad2 ? ad2.as<double>() * 0.5 : r;
 
-    auto ph = c.get<double>("h");
-    double h = ph ? *ph : 1.0;
+    double h = c.named("h").as<double>(1.0);
 
     const auto location = parseShapeLocation(c, defaultAnchor);
 
@@ -95,15 +93,11 @@ Value builtin_cyl(const CallContext &c) {
 
 Value builtin_sphere(const CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{0.0, 0.0, 0.0};
-    auto pr = c.get<double>("r");
-    auto pd = c.get<double>("d");
-    double r = pr ? *pr : pd ? *pd : 1.0;
+    auto ar = c.named("r");
+    auto ad = c.named("d");
+    double r = ar ? ar.as<double>() : ad ? ad.as<double>() : 1.0;
 
     const auto location = parseShapeLocation(c, defaultAnchor);
-
-    if (pr && pd) {
-        c.warning("Both r and d defined for sphere - using r");
-    }
 
     if (r <= Precision::Confusion()) {
         return undefined;

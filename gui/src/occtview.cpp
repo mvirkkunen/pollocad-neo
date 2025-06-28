@@ -378,13 +378,11 @@ void OcctRenderer::setResult(BackgroundExecutorResult *result) {
 
             aisShape->SetColor(Quantity_Color{Quantity_NOC_RED});
             aisShape->SetTransparency();
-        } else if (auto pcolor = sh.getProp("color").as<std::string>()) {
-            auto colorName = pcolor->c_str();
-
+        } else if (auto colorName = sh.getProp("color").as<std::string>(); !colorName.empty()) {
             Quantity_Color color;
-            if (Quantity_Color::ColorFromHex(colorName, color)) {
+            if (Quantity_Color::ColorFromHex(colorName.c_str(), color)) {
                 aisShape->SetColor(color);
-            } else if (Quantity_Color::ColorFromName(colorName, color)) {
+            } else if (Quantity_Color::ColorFromName(colorName.c_str(), color)) {
                 aisShape->SetColor(color);
             }
         }

@@ -13,9 +13,9 @@ void BackgroundExecutor::execute(QString code) {
 
         std::optional<ShapeList> shapes;
         
-        if (auto pshapes = r.result->as<ShapeList>()) {
-            shapes = *pshapes;
-        } else if (r.result->undefined()) {
+        if (r.result->is<ShapeList>()) {
+            shapes = r.result->as<ShapeList>();
+        } else if (!*r.result) {
             shapes = ShapeList{};
         } else {
             r.messages.push_back(LogMessage{LogMessage::Level::Error, "Top level value is not shapes"});

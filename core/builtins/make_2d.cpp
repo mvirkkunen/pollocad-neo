@@ -16,7 +16,7 @@ namespace
 
 Value builtin_rect(CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{-1.0, -1.0, 0.0};
-    const auto size = parseXY(c, 1.0);
+    const auto size = parseXY(c, c.arg("size"), 1.0);
     const auto location = parseShapeLocation(c, defaultAnchor);
 
     if (size.X() <= Precision::Confusion() || size.Y() <= Precision::Confusion()) {
@@ -35,7 +35,7 @@ Value builtin_rect(CallContext &c) {
         BRepBuilderAPI_MakeEdge{p3, p0},
     };
 
-    auto shape = c.named("wire", false).isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
+    auto shape = c.named("wire").isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
 
     location.apply(shape, gp_XYZ{size.X(), size.Y(), 0.0});
     return ShapeList{Shape{shape, c.span()}};
@@ -57,7 +57,7 @@ Value builtin_circ(CallContext &c) {
 
     auto wire = BRepBuilderAPI_MakeWire{BRepBuilderAPI_MakeEdge{gp_Circ{gp_Ax2{}, r}}};
 
-    auto shape = c.named("wire", false).isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
+    auto shape = c.named("wire").isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
 
     location.apply(shape, gp_XYZ{r * 2.0, r * 2.0, 0.0});
     return ShapeList{Shape{shape, c.span()}};

@@ -9,9 +9,9 @@ add_library(PollocadCore
     executor.h executor.cpp
     logmessage.h
     builtins/helpers.h builtins/helpers.cpp
-    # builtins/chamfer_fillet.cpp
-    # builtins/make_2d.cpp
-    # builtins/make_3d.cpp
+    builtins/chamfer_fillet.cpp
+    builtins/make_2d.cpp
+    builtins/make_3d.cpp
     builtins/primitives.cpp
     # builtins/shape_manipulation.cpp
 )

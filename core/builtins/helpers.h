@@ -20,10 +20,10 @@ struct ShapeLocation {
 
 Bnd_Box getBoundingBox(const ShapeList& shapes);
 Bnd_Box getBoundingBox(const TopoDS_Shape& shape);
-gp_XYZ parseXYZ(const CallContext &c, double default_);
-gp_XY parseXY(const CallContext &c, double default_);
-gp_XYZ parseVec(const CallContext &c, const std::string &name, const Value *pval, gp_XYZ default_={});
-gp_XYZ parseDirection(const CallContext &c, const std::string &name, const Value *pval, gp_XYZ default_={});
+gp_XYZ parseXYZ(const CallContext &c, const Argument &arg, double default_);
+gp_XY parseXY(const CallContext &c, const Argument &arg, double default_);
+gp_XYZ parseVec(const Argument &arg, gp_XYZ default_={}, int elements=3);
+gp_XYZ parseDirection(const Argument &arg, gp_XYZ default_={});
 
 inline double degToRad(double deg) {
     return deg * (M_PI / 180.0);

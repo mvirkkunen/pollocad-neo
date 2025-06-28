@@ -25,9 +25,9 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
 Executor::Executor() {
     m_defaultEnvironment = std::make_shared<Environment>(nullptr);
 
-    //REGISTER_BUILTINS(chamfer_fillet);
-    //REGISTER_BUILTINS(make_2d);
-    //REGISTER_BUILTINS(make_3d);
+    REGISTER_BUILTINS(chamfer_fillet);
+    REGISTER_BUILTINS(make_2d);
+    REGISTER_BUILTINS(make_3d);
     REGISTER_BUILTINS(primitives);
     //REGISTER_BUILTINS(shape_manipulation);
 }
@@ -74,10 +74,11 @@ namespace
 {
 
 void addHighlighted(ShapeList &shapes, const Value &value) {
-    if (auto pshape = value.as<ShapeList>()) {
+    if (value.is<ShapeList>()) {
+        auto list = value.as<ShapeList>();
         std::copy_if(
-            pshape->begin(),
-            pshape->end(),
+            list.cbegin(),
+            list.cend(),
             std::back_inserter(shapes),
             [](const auto &sh) { return sh.hasProp("highlight"); }
         );
@@ -99,7 +100,7 @@ struct UserFunction {
         auto env = std::shared_ptr<Environment>(new Environment(parentEnvPtr));
 
         size_t i = 0;
-        for (const auto& val : c.positional()) {
+        for (const auto& val : c.allPositional()) {
             if (i > expr.args.size()) {
                 return c.error("too many arguments for function {}", expr.name);
             }
@@ -108,7 +109,7 @@ struct UserFunction {
             i++;
         }
 
-        for (const auto& [name, val] : c.named()) {
+        for (const auto& [name, val] : c.allNamed()) {
             if (!name.starts_with("$")) {
                 if (defaults.find(name) == defaults.end()) {
                     return c.error("function {} does not take argument {}", expr.name, name);
@@ -146,10 +147,11 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                     }
 
                     Value val = eval(context, env, &expr);
-                    if (auto resultShapes = val.as<ShapeList>()) {
-                        std::move(resultShapes->begin(), resultShapes->end(), std::back_inserter(shapes));
+                    if (val.is<ShapeList>()) {
+                        auto list = val.as<ShapeList>();
+                        std::move(list.cbegin(), list.cend(), std::back_inserter(shapes));
                     } else {
-                        if (!shapes.empty() && !val.undefined()) {
+                        if (!shapes.empty() && !val.isUndefined()) {
                             context.addMessage(LogMessage::Level::Error, ex.span, "cannot return both shapes and a value");
                             return undefined;
                         }
@@ -190,11 +192,13 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                     error = true;
                 }
 
-                auto func = funcVal.as<Function>();
-                if (!func && !error) {
-                    context.addMessage(LogMessage::Level::Warning, ex.span, "'{}' is of type '{}', not a function", ex.func, funcVal.typeName());
-                    error = true;
+                if (!funcVal.is<Function>() && !error) {
+                    context.addMessage(LogMessage::Level::Warning, ex.span, "'{}' is of type {}, not a function", ex.func, funcVal.typeName());
+                    return undefined; // TODO FIXME
+                    //error = true;
                 }
+
+                auto func = funcVal.as<Function>();
 
                 ShapeList highlighted;
 
@@ -225,8 +229,9 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                 }
 
                 Value result = undefined;
+                auto callContext = CallContext(context, positional, named, ex.span);
                 try {
-                    result = (*func)(CallContext(context, positional, named, ex.span));
+                    result = func(callContext);
                 } catch (Standard_Failure &exc) {
                     context.addMessage(LogMessage::Level::Warning, ex.span, "exception in built-in function: {}: {}", typeid(exc).name(), exc.GetMessageString());
                 } catch (...) {
@@ -234,10 +239,10 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                 }
 
                 if (!highlighted.empty()) {
-                    if (result.undefined()) {
+                    if (result.isUndefined()) {
                         return highlighted;
-                    } else if (auto pshapes = result.as<ShapeList>()) {
-                        ShapeList combined = *pshapes;
+                    } else if (result.is<ShapeList>()) {
+                        ShapeList combined = result.as<ShapeList>();
                         std::copy(highlighted.begin(), highlighted.end(), std::back_inserter(combined));
                         return combined;
                     } else {
@@ -261,7 +266,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                     defaults.emplace(arg.name, val);
                 }
 
-                return std::function<Value(const CallContext &)>{UserFunction{env, ex, defaults}};
+                return std::function<Value(CallContext &)>{UserFunction{env, ex, defaults}};
             } else {
                 static_assert(false, "non-exhaustive visitor!");
             }

@@ -257,10 +257,10 @@ struct stmt_call {
                 if (next.func == "for") {
                     auto nameExpr = next.positional.back();
                     if (auto pLiteralExpr = std::get_if<LiteralExpr>(&nameExpr.inner())) {
-                        if (auto pname = pLiteralExpr->value.as<std::string>()) {
+                        if (pLiteralExpr->value.is<std::string>()) {
                             if (auto plambda = std::get_if<LambdaExpr>(&result.inner())) {
                                 next.positional.pop_back();
-                                plambda->args.push_back(LambdaExpr::Arg{*pname});
+                                plambda->args.push_back(LambdaExpr::Arg{pLiteralExpr->value.as<std::string>()});
                             }
                         }
                     }

@@ -2,6 +2,8 @@
 
 #include "value.h"
 
+const ValueList emptyValueList{};
+
 Shape::Shape(TopoDS_Shape shape, Span span) : m_shape(shape), m_spans({span}) { }
 
 Shape::Shape(TopoDS_Shape shape, std::vector<Span> spans) : m_shape(shape), m_spans(spans) { }
@@ -254,4 +256,9 @@ Value Value::constructBool(bool v) {
     Value value;
     value.constructCell(v);
     return value;
+}
+
+template <> ValueAs<Function> emptyValueAs<Function>() {
+    static Function empty = [](const auto &) { return undefined; };
+    return empty;
 }
