@@ -14,7 +14,7 @@
 namespace
 {
 
-Value builtin_rect(const CallContext &c) {
+Value builtin_rect(CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{-1.0, -1.0, 0.0};
     const auto size = parseXY(c, 1.0);
     const auto location = parseShapeLocation(c, defaultAnchor);
@@ -35,24 +35,19 @@ Value builtin_rect(const CallContext &c) {
         BRepBuilderAPI_MakeEdge{p3, p0},
     };
 
-    bool asFace = true;
-    if (auto pwire = c.get("wire")) {
-        asFace = !pwire->truthy();
-    }
-
-    auto shape = asFace ? BRepBuilderAPI_MakeFace{wire.Wire()}.Shape() : wire.Shape();
+    auto shape = c.named("wire", false).isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
 
     location.apply(shape, gp_XYZ{size.X(), size.Y(), 0.0});
     return ShapeList{Shape{shape, c.span()}};
 }
 
-Value builtin_circ(const CallContext &c) {
+Value builtin_circ(CallContext &c) {
     static const auto defaultAnchor = gp_XYZ{0.0, 0.0, 0.0};
 
-    auto pr = c.get<double>("r");
-    auto pd = c.get<double>("d");
+    auto ar = c.named("r");
+    auto ad = c.named("d");
 
-    auto r = pr ? *pr : pd ? *pd * 0.5 : 1.0;
+    auto r = ar ? ar.as<double>() : ad ? ad.as<double>() * 0.5 : 1.0;
 
     const auto location = parseShapeLocation(c, defaultAnchor);
 
@@ -62,12 +57,7 @@ Value builtin_circ(const CallContext &c) {
 
     auto wire = BRepBuilderAPI_MakeWire{BRepBuilderAPI_MakeEdge{gp_Circ{gp_Ax2{}, r}}};
 
-    bool asFace = true;
-    if (auto pwire = c.get("wire")) {
-        asFace = !pwire->truthy();
-    }
-
-    auto shape = asFace ? BRepBuilderAPI_MakeFace{wire.Wire()}.Shape() : wire.Shape();
+    auto shape = c.named("wire", false).isTruthy() ? wire.Shape() : BRepBuilderAPI_MakeFace{wire.Wire()}.Shape();
 
     location.apply(shape, gp_XYZ{r * 2.0, r * 2.0, 0.0});
     return ShapeList{Shape{shape, c.span()}};

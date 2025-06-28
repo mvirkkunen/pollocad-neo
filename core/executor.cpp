@@ -25,11 +25,11 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
 Executor::Executor() {
     m_defaultEnvironment = std::make_shared<Environment>(nullptr);
 
-    REGISTER_BUILTINS(chamfer_fillet);
-    REGISTER_BUILTINS(make_2d);
-    REGISTER_BUILTINS(make_3d);
+    //REGISTER_BUILTINS(chamfer_fillet);
+    //REGISTER_BUILTINS(make_2d);
+    //REGISTER_BUILTINS(make_3d);
     REGISTER_BUILTINS(primitives);
-    REGISTER_BUILTINS(shape_manipulation);
+    //REGISTER_BUILTINS(shape_manipulation);
 }
 
 ExecutorResult Executor::execute(const std::string &code) {

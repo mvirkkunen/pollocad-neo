@@ -4,7 +4,6 @@
 #include <bit>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <unordered_map>
 #include <vector>
 #include <TopoDS_Shape.hxx>
@@ -17,6 +16,8 @@ struct Undefined
 {
     bool operator==(const Undefined &) const = default;
 };
+
+using Undef = Undefined;
 
 using ValueList = std::vector<Value>;
 
@@ -46,7 +47,7 @@ private:
 using ShapeList = std::vector<Shape>;
 
 class CallContext;
-using Function = std::function<Value(const CallContext&)>;
+using Function = std::function<Value(CallContext&)>;
 
 enum class Type {
     Undefined = 0,
@@ -58,11 +59,14 @@ enum class Type {
     Function = 6,
 };
 
-template <typename T> struct OptionalValueT { using Type = const T *; };
-template <> struct OptionalValueT<bool> { using Type = std::optional<bool>; };
-template <> struct OptionalValueT<double> { using Type = std::optional<double>; };
+template <typename T> struct ValueAsT { using Type = const T &; };
+template <> struct ValueAsT<Undefined> { using Type = Undefined; };
+template <> struct ValueAsT<bool> { using Type = bool; };
+template <> struct ValueAsT<double> { using Type = double; };
 
-template <typename T> using OptionalValue = OptionalValueT<T>::Type;
+template <typename T> using ValueAs = ValueAsT<T>::Type;
+
+template <typename T> struct EmptyValue { static T value() { return T{}; } };
 
 class alignas(8) Value {
 public:
@@ -89,25 +93,30 @@ public:
     Type type() const;
     const char *typeName() const { return typeName(type()); }
 
+    template <typename... T>
+    bool is() const {
+        return ((type() == typeOf<T>()) || ...);
+    }
+
     template <typename T>
-    OptionalValue<T> as() const {
-        if constexpr (std::is_same_v<T, bool>) {
-            return (type() == Type::Boolean) ? std::optional<bool>(getCellTUnsafe<T>()->value) : std::nullopt;
+    ValueAs<T> as(ValueAs<T> default_) const {
+        if constexpr (std::is_same_v<T, Undefined>) {
+            return is<Undefined>() ? Undefined{} : default_;
         } else if constexpr (std::is_same_v<T, double>) {
-            return asDouble();
+            return is<double>() ? asDouble() : default_;
         } else {
-            return (type() == typeOf<T>()) ? &getCellTUnsafe<T>()->value : nullptr;
+            return is<T>() ? getCellTUnsafe<T>()->value : default_;
         }
     }
 
     template <typename T>
-    const T asOrDefault(T default_) const {
-        auto value = as<T>();
-        return value ? *value : default_;
+    ValueAs<T> as() const {
+        static T empty = EmptyValue<T>::value();
+        return as<T>(empty);
     }
 
-    constexpr bool undefined() const { return m_value == c_undefinedVal; }
-    bool truthy() const;
+    constexpr bool isUndefined() const { return m_value == c_undefinedVal; }
+    bool isTruthy() const;
 
     std::ostream &repr(std::ostream &os) const;
     std::string repr() const;
@@ -115,6 +124,7 @@ public:
     std::ostream &display(std::ostream &os) const;
     std::string display() const;
 
+    operator bool() const { return !isUndefined(); }
     bool operator==(const Value &other) const;
 
     friend std::ostream& operator<<(std::ostream& os, const Value& val);
@@ -166,7 +176,7 @@ private:
     //
     // - if m_value == 0 -> undefined
     // - else if m_value low 3 bits are 000 -> pointer to Cell (might store a double if it was an unlikely value)
-    // - else m_value = ~rotl(doubleVal, c_rotate) -> the bit fudging makes it very unlikely for the values to lool like a pointer
+    // - else m_value = ~rotl(doubleVal, c_rotate) -> the bit fudging makes it very unlikely for the values to look like a pointer
 
     struct Cell {
         std::atomic_uint32_t refCount;
@@ -180,7 +190,7 @@ private:
 
     uint64_t m_value;
 
-    std::optional<double> asDouble() const;
+    double asDouble() const;
 
     template <typename T>
     void constructCell(T v);
@@ -200,5 +210,7 @@ private:
     static Value constructBool(bool v);
 };
 
+
 constexpr const auto undefined = Value{};
 
+template <> struct EmptyValue<Function> { static Function value() { return [](CallContext &) -> Value { return undefined; }; } };

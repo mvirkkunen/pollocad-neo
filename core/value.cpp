@@ -64,7 +64,7 @@ Value &Value::operator=(const Value &other) {
     return *this;
 }
 
-bool Value::truthy() const {
+bool Value::isTruthy() const {
     if (m_value == c_undefinedVal) {
         return false;
     }
@@ -73,7 +73,7 @@ bool Value::truthy() const {
         case Type::Boolean:
             return getCellTUnsafe<bool>()->value;
         case Type::Number:
-            return *asDouble() != 0.0;
+            return asDouble() != 0.0;
         case Type::String:
             return !getCellTUnsafe<std::string>()->value.empty();
         case Type::ValueList:
@@ -92,13 +92,13 @@ std::ostream &Value::repr(std::ostream &os) const {
         case Type::Undefined:
             return os << "undefined";
         case Type::Boolean:
-            return os << (*as<bool>() ? "true" : "false");
+            return os << (as<bool>() ? "true" : "false");
         case Type::Number:
-            return os << *as<double>();
+            return os << as<double>();
         case Type::String:
-            return os << std::quoted(*as<std::string>());
+            return os << std::quoted(as<std::string>());
         case Type::ValueList: {
-            ValueList list = *as<ValueList>();
+            ValueList list = as<ValueList>();
             os << "[";
 
             bool first = true;
@@ -135,7 +135,7 @@ std::ostream &Value::display(std::ostream &os) const {
         case Type::Undefined:
             return os;
         case Type::String:
-            return os << *as<std::string>();
+            return os << as<std::string>();
         default:
             return repr(os);
     }
@@ -186,13 +186,13 @@ Type Value::type() const {
         : Type::Number;
 }
 
-std::optional<double> Value::asDouble() const {
+double Value::asDouble() const {
     if (m_value == c_undefinedVal) {
-        return std::nullopt;
+        return 0.0;
     }
 
     if (isCell()) {
-        return (getCellUnsafe()->type == Type::Number) ? std::optional<double>{getCellTUnsafe<double>()->value} : std::nullopt;
+        return (getCellUnsafe()->type == Type::Number) ? getCellTUnsafe<double>()->value : 0.0;
     }
 
     return std::bit_cast<double>(~std::rotr(m_value, c_rotate));

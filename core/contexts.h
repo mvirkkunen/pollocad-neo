@@ -28,6 +28,43 @@ private:
     std::vector<LogMessage> m_messages;
 };
 
+class CallContext;
+
+class Argument {
+public:
+    Argument(CallContext &callContext, const char *name, const Value &value) : m_callContext(callContext), m_name(name), m_value(value) { }
+    ~Argument();
+
+    template <typename T>
+    ValueAs<T> as() const {
+        if (m_value.as<T>()) {
+            m_expectedTypes = 0;
+        } else {
+            m_expectedTypes = 1 << static_cast<int>(Value::typeOf<T>());
+        }
+
+        return m_value.as<T>();
+    }
+
+    template <typename T>
+    ValueAs<T> as(T default_) const {
+        return m_value.isUndefined() ? default_ : as<T>();
+    }
+
+    Value &asAny() const {
+        m_expectedTypes = 0;
+        return m_value;
+    }
+
+    operator bool() const { return !m_value.isUndefined(); }
+
+private:
+    const CallContext &m_callContext;
+    const char *m_name;
+    const Value &m_value;
+    uint8_t m_expectedTypes = 0;
+};
+
 class CallContext {
 public:
     CallContext(ExecutionContext &execContext, std::vector<Value> positional, std::unordered_map<std::string, Value> named, const Span &span) :
@@ -37,11 +74,40 @@ public:
 
     bool canceled() const { return m_execContext.isCanceled(); }
 
-    const std::vector<Value> &positional() const { return m_positional; }
+    Argument arg(const char *name) {
+        auto value = (m_nextPositional <= m_positional.size()) ? m_positional.at(m_nextPositional++) : undefined;
+        return Argument(*this, name, value);
+    }
 
-    const std::unordered_map<std::string, Value> &named() const { return m_named; }
+    /*template <typename T>
+    ValueAs<T> positional(const std::string &name) {
+        Value val = positional(name);
+        if (val.isUndefined()) {
+            error("required parameter {} not specified", name);
+        } else if (!val.is<T>()) {
+            error("parameter {} is of the incorrect type", name);
+        } else {
 
-    const Value *get(size_t index) const {
+        }
+    }*/
+
+    Argument named(const char *name) {
+        auto it = m_named.find(name);
+        auto value = (it != m_named.end() ? it->second : undefined);
+        return Argument(*this, name, value);
+    }
+
+    //std::span<Value const> rest() const;
+
+    const std::vector<Value> &allPositional() const { return m_positional; }
+
+    const std::unordered_map<std::string, Value> &allNamed() const { return m_named; }
+
+    //const std::vector<Value> &positional() const { return m_positional; }
+
+    //const std::unordered_map<std::string, Value> &named() const { return m_named; }
+
+    /*const Value *get(size_t index) const {
         return index < m_positional.size() ? &m_positional.at(index) : nullptr;
     }
 
@@ -78,7 +144,7 @@ public:
         }
 
         return tv;
-    }
+    }*/
 
     const ShapeList children() const;
 
@@ -117,6 +183,7 @@ private:
     const std::vector<Value> m_positional;
     const std::unordered_map<std::string, Value> m_named;
     const Span &m_span;
+    size_t m_nextPositional = 0;
 };
 
 class Environment {

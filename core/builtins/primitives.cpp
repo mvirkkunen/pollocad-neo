@@ -6,44 +6,27 @@ namespace
 {
 
 Value builtin_if(const CallContext &c) {
-    size_t size = c.positional().size();
-    for (int i = 0; i < size; i++) {
-        auto condOrElse = *c.get(i);
+    auto args = c.allPositional();
+    for (int i = 0; i < args.size(); i++) {
+        auto condOrElse = args.at(i);
 
-        if (i == size - 1) {
-            if (auto pfunc = condOrElse.as<Function>()) {
-                // else
-                return (*pfunc)(c.empty());
-            } else {
-                return undefined;
-            }
+        if (i == args.size() - 1) {
+            auto ec = c.empty();
+            return condOrElse.as<Function>()(ec);
         }
 
-        bool truthy;
-        if (i == 0) {
-            truthy = condOrElse.truthy();
-        } else {
-            if (auto pfunc = condOrElse.as<Function>()) {
-                // condition
-                truthy = (*pfunc)(c.empty()).truthy();
-            } else {
-                return undefined;
-            }
-        }
+        auto ec = c.empty();
+        bool truthy = (i == 0) ? condOrElse : condOrElse.as<Function>()(ec).truthy();
 
         i++;
 
         if (truthy) {
-            if (i >= size) {
+            if (i >= args.size()) {
                 return c.error("malformed if clause (no value after condition)");
             }
 
-            if (auto pfunc = c.get(i)->as<Function>()) {
-                // then
-                return (*pfunc)(c.empty());
-            } else {
-                return undefined;
-            }
+            auto ec = c.empty();
+            return args.at(i).as<Function>()(ec);
         }
     }
 
@@ -51,15 +34,11 @@ Value builtin_if(const CallContext &c) {
 }
 
 auto builtin_un_op(std::function<double(double)> op) {
-    return [op](const CallContext &c) -> Value {
-        if (c.positional().size() != 1) {
-            return c.error("malformed unary operation (incorrect argument count)");
-        }
+    return [op](CallContext &c) -> Value {
+        auto arg = c.get("argument");
 
-        auto a = c.get(0);
-
-        if (auto pna = a->as<double>()) {
-            return op(*pna);
+        if (arg->is<double>()) {
+            return op(arg->as<double>());
         } else if (auto pla = a->as<ValueList>()) {
             ValueList result;
             result.reserve(pla->size());
@@ -228,13 +207,13 @@ Value builtin_index(const CallContext &c) {
     }
 }
 
-Value builtin_list(const CallContext &c) {
-    return c.positional();
+Value builtin_list(CallContext &c) {
+    return c.allPositional();
 }
 
 Value builtin_concat(const CallContext &c) {
-    auto it = c.positional().cbegin();
-    auto end = c.positional().cend();
+    auto it = c.allPositional().cbegin();
+    auto end = c.allPositional().cend();
     if (it == end) {
         return undefined;
     }
@@ -243,7 +222,7 @@ Value builtin_concat(const CallContext &c) {
         ValueList result;
 
         for (; it != end; it++) {
-            if (it->undefined()) {
+            if (!*it) {
                 continue;
             } else if (auto plist = it->as<ValueList>()) {
                 std::copy(plist->cbegin(), plist->cend(), std::back_inserter(result));
@@ -257,7 +236,7 @@ Value builtin_concat(const CallContext &c) {
         std::string result;
 
         for (; it != end; it++) {
-            if (it->undefined()) {
+            if (!*it) {
                 continue;
             } else if (auto pstr = it->as<std::string>()) {
                 result += *pstr;
@@ -272,32 +251,24 @@ Value builtin_concat(const CallContext &c) {
     }
 }
 
-Value builtin_type(const CallContext &c) {
-    if (c.positional().empty()) {
-        return undefined;
-    }
-
-    return c.positional().at(0).typeName();
+Value builtin_type(CallContext &c) {
+    return c.arg("value").asAny().typeName();
 }
 
-Value builtin_str(const CallContext &c) {
-    if (c.positional().empty()) {
-        return undefined;
-    }
-
+Value builtin_str(CallContext &c) {
     std::stringstream ss;
-    c.positional().at(0).display(ss);
+    c.arg("value").asAny().display(ss);
     return ss.str();
 }
 
-Value builtin_echo(const CallContext &c) {
+Value builtin_echo(CallContext &c) {
     std::stringstream ss;
 
-    for (const auto &arg : c.positional()) {
+    for (const auto &arg : c.allPositional()) {
         arg.display(ss);
     }
 
-    for (const auto &arg: c.named()) {
+    for (const auto &arg: c.allNamed()) {
         ss << arg.first << "=";
         arg.second.display(ss);
     }
