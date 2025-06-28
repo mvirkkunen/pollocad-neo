@@ -296,12 +296,18 @@ protected:
     void rehighlightSpans(const QList<SpanObj> &spans) {
         for (const auto &span : spans) {
             auto it = document()->findBlock(span.begin);
-            auto end = document()->findBlock(span.end);
 
             do {
+                int posBefore = it.position();
+
                 rehighlightBlock(it);
+
                 it = it.next();
-            } while (it != document()->end());
+                if (it.position() <= posBefore) {
+                    // not sure why this sometimes gets stuck in an infinite loop
+                    break;
+                }
+            } while (it != document()->end() && it.position() >= span.end);
         }
     }
 

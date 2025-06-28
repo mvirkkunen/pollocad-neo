@@ -133,6 +133,28 @@ gp_XYZ parseXYZ(const CallContext &c, double default_) {
     return vec;
 }
 
+gp_XY parseXY(const CallContext &c, double default_) {
+    gp_XY vec{default_, default_};
+
+    if (auto l = c.get<ValueList>(0)) {
+        for (int i = 0; i < l->size() && i < 2; i++) {
+            if (auto n = (*l)[i].as<double>()) {
+                vec.SetCoord(i + 1, *n);
+            }
+        }
+    }
+
+    if (auto n = c.get<double>("x")) {
+        vec.SetX(*n);
+    }
+
+    if (auto n = c.get<double>("y")) {
+        vec.SetY(*n);
+    }
+
+    return vec;
+}
+
 ShapeLocation parseShapeLocation(const CallContext &c, const gp_XYZ &defaultAnchor) {
     ShapeLocation loc;
 

@@ -10,7 +10,8 @@ add_library(PollocadCore
     logmessage.h
     builtins/helpers.h builtins/helpers.cpp
     builtins/chamfer_fillet.cpp
-    builtins/primitive_shapes.cpp
+    builtins/make_2d.cpp
+    builtins/make_3d.cpp
     builtins/primitives.cpp
     builtins/shape_manipulation.cpp
 )
@@ -31,11 +32,10 @@ target_link_libraries(PollocadCore
         TKernel
         TKFillet
         TKMath
-        TKOpenGl
+        TKOffset
         TKPrim
         TKService
         TKTopAlgo
-        TKV3d
 )
 
 find_program(XXD_COMMAND NAMES xxd)

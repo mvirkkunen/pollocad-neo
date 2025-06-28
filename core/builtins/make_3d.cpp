@@ -193,7 +193,7 @@ Value builtin_pollo(const CallContext &c) {
 
 }
 
-void add_builtins_primitive_shapes(Environment &env) {
+void add_builtins_make_3d(Environment &env) {
     env.setFunction("box", builtin_box);
     env.setFunction("cyl", builtin_cyl);
     env.setFunction("sphere", builtin_sphere);

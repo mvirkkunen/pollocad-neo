@@ -25,6 +25,8 @@ target_include_directories(PollocadGui PRIVATE src)
 target_link_libraries(PollocadGui
     PRIVATE
         PollocadCore
+        TKOpenGl
+        TKV3d
         Qt6::Quick
         Qt6::QuickControls2
 )

@@ -6,6 +6,12 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepTools.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 
 namespace
@@ -265,6 +271,92 @@ Value builtin_for(const CallContext &c) {
     return result;
 }
 
+Value builtin_pipe_shell(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    TopoDS_Wire spline;
+    if (auto pdist = c.get<double>(0, false)) {
+        spline = BRepLib_MakeWire{
+            BRepLib_MakeEdge{gp_Pnt{0.0, 0.0, 0.0}, gp_Pnt{0.0, 0.0, *pdist}}
+        };
+    } else if (auto pshape = c.get<ShapeList>(0, false); !pshape->empty()) {
+        if (pshape->size() > 1) {
+            return c.error("invalid spline for pipe_shell (multiple shapes)");
+        }
+
+        auto shape = pshape->at(0).shape();
+        if (shape.ShapeType() != TopAbs_WIRE) {
+            return c.error("invalid spline for pipe_shell (shape is not a wire)");
+        }
+
+        spline = TopoDS::Wire(shape);
+    } else {
+        return c.error("invalid spline for pipe_shell (not number or shape)");
+    }
+
+    auto algo = BRepOffsetAPI_MakePipeShell{spline};
+
+    algo.SetDiscreteMode();
+
+    for (const auto &ch : children) {
+        auto shape = ch.shape();
+
+        c.info("Adding shape of type {}", (int)shape.ShapeType());
+
+        algo.Add(shape);
+    }
+
+    //algo.MakeSolid();
+
+    return ShapeList{algo.Shape()};
+}
+
+Value builtin_thru_sections(const CallContext &c) {
+    auto children = c.children();
+    if (children.empty()) {
+        return undefined;
+    }
+
+    auto algo = BRepOffsetAPI_ThruSections{true, true};
+
+    for (const auto &ch : children) {
+        auto shape = ch.shape();
+
+        for (TopExp_Explorer i(ch.shape(), TopAbs_WIRE); i.More(); i.Next()) {
+            algo.AddWire(TopoDS::Wire(i.Current()));
+        }
+
+        /*switch (shape.ShapeType()) {
+            case TopAbs_FACE: {
+                auto wire = BRepTools::OuterWire(TopoDS::Face(shape));
+                if (wire.IsNull()) {
+                    c.warning("ignoring child shape: face does not have an outer wire");
+                    break;
+                }
+                algo.AddWire(wire);
+                break;
+            }
+
+            case TopAbs_WIRE:
+                algo.AddWire(TopoDS::Wire(shape));
+                break;
+
+            case TopAbs_VERTEX:
+                algo.AddVertex(TopoDS::Vertex(shape));
+                break;
+
+            default:
+                c.warning("invalid shape type for thru_sections: {}", (int)shape.ShapeType());
+                break;
+        }*/
+    }
+
+    return ShapeList{algo.Shape()};
+}
+
 Value builtin_bounds(const CallContext &c) {
     Bnd_Box result;
 
@@ -301,6 +393,8 @@ void add_builtins_shape_manipulation(Environment &env) {
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("for", builtin_for);
+    env.setFunction("pipe_shell", builtin_pipe_shell);
+    env.setFunction("thru_sections", builtin_thru_sections);
     env.setFunction("bounds", builtin_bounds);
 }
 
