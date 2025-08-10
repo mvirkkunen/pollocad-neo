@@ -112,10 +112,10 @@ private:
 class ArgumentList;
 
 class Argument {
-    Argument(const CallContext &callContext, const char *name, const Value &value, bool isSubValue) : m_callContext(callContext), m_name(name), m_value(value), m_isSubValue(isSubValue) { }
+    Argument(const CallContext &callContext, const char *name, Value value, bool isSubValue) : m_callContext(callContext), m_name(name), m_value(value), m_isSubValue(isSubValue) { }
 
 public:
-    Argument(const CallContext &callContext, const char *name, const Value &value) : Argument(callContext, name, value, false) { }
+    Argument(const CallContext &callContext, const char *name, Value value) : Argument(callContext, name, value, false) { }
 
     const Argument subValue(const Value &value) const {
         return Argument(m_callContext, m_name, value, true);
@@ -187,7 +187,7 @@ public:
 private:
     const CallContext &m_callContext;
     const char *m_name;
-    const Value &m_value;
+    const Value m_value;
     const bool m_isSubValue;
 
     std::string descriptiveName() const {

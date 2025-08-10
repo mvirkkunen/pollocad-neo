@@ -6,9 +6,9 @@ Argument CallContext::arg(const char *name) {
     return Argument(*this, name, value);
 }
 
-Argument CallContext::named(const char *name) const {
-    const auto &it = m_named.find(name);
-    const auto &value = (it != m_named.end() ? it->second : undefined);
+Argument CallContext::named(const char *name) const {  
+    const auto it = m_named.find(name);
+    const auto value = (it != m_named.end() ? it->second : undefined);
     return Argument(*this, name, value);
 }
 
