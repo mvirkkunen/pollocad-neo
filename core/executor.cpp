@@ -16,7 +16,7 @@ extern void register_builtins_shapes(Environment &env);
 namespace
 {
 
-Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr);
+Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr, int recursionDepth);
 
 }
 
@@ -54,7 +54,7 @@ ExecutorResult Executor::execute(const std::string &code) {
 
     auto env = std::make_shared<Environment>(m_defaultEnvironment);
 
-    std::optional<Value> result = eval(context, env, &*parserResult.result);
+    std::optional<Value> result = eval(context, env, &*parserResult.result, 1);
     if (context.isCanceled()) {
         result = std::nullopt;
     }
@@ -91,6 +91,11 @@ struct UserFunction {
     std::unordered_map<std::string, Value> defaults;
 
     Value operator()(const CallContext &c) {
+        if (c.recursionDepth() > 100) {
+            c.error("maximum recursion depth exceeded");
+            return undefined;
+        }
+
         auto parentEnvPtr = parentEnv.lock();
         if (!parentEnvPtr) {
             c.warning("attempted to call an escaped function - this is not supported");
@@ -125,17 +130,17 @@ struct UserFunction {
             }
         }
 
-        return eval(c.execContext(), env, &*expr.body);
+        return eval(c.execContext(), env, &*expr.body, c.recursionDepth() + 1);
     }
 };
 
-Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr) {
+Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const ast::Expr* expr, int recursionDepth) {
     if (context.isCanceled()) {
         return undefined;
     }
 
     return std::visit<Value>(
-        [env, &context](const auto &ex) -> Value {
+        [env, &context, recursionDepth](const auto &ex) -> Value {
             using T = std::decay_t<decltype(ex)>;
             if constexpr (std::is_same_v<T, ast::BlockExpr>) {
                 Value result = undefined;
@@ -146,7 +151,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         return undefined;
                     }
 
-                    Value val = eval(context, env, &expr);
+                    Value val = eval(context, env, &expr, recursionDepth);
                     if (val.is<ShapeList>()) {
                         auto list = val.as<ShapeList>();
                         std::move(list.cbegin(), list.cend(), std::back_inserter(shapes));
@@ -176,7 +181,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
 
                 return val;
             } else if constexpr (std::is_same_v<T, ast::LetExpr>) {
-                auto val = eval(context, env, &*ex.value);
+                auto val = eval(context, env, &*ex.value, recursionDepth);
 
                 if (!env->set(ex.name, val)) {
                     context.addMessage(LogMessage::Level::Error, ex.span, "'{}' is already defined", ex.name);
@@ -208,7 +213,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         return undefined;
                     }
 
-                    auto val = eval(context, env, &ch);
+                    auto val = eval(context, env, &ch, recursionDepth);
                     addHighlighted(highlighted, val);
                     positional.push_back(val);
                 }
@@ -219,7 +224,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         return undefined;
                     }
 
-                    auto val = eval(context, env, &*ch);
+                    auto val = eval(context, env, &*ch, recursionDepth);
                     addHighlighted(highlighted, val);
                     named.emplace(name, val);
                 }
@@ -229,7 +234,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                 }
 
                 Value result = undefined;
-                auto callContext = CallContext(context, positional, named, ex.span);
+                auto callContext = CallContext(context, positional, named, ex.span, recursionDepth);
                 try {
                     result = func(callContext);
                 } catch (Standard_Failure &exc) {
@@ -262,7 +267,7 @@ Value eval(ExecutionContext &context, std::shared_ptr<Environment> env, const as
                         continue;
                     }
 
-                    auto val = eval(context, env, &**arg.default_);
+                    auto val = eval(context, env, &**arg.default_, recursionDepth);
                     defaults.emplace(arg.name, val);
                 }
 

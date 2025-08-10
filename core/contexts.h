@@ -54,8 +54,8 @@ class Argument;
 
 class CallContext {
 public:
-    CallContext(ExecutionContext &execContext, std::vector<Value> positional, std::unordered_map<std::string, Value> named, const Span &span) :
-        m_execContext(execContext), m_positional(positional), m_named(named), m_span(span) { }
+    CallContext(ExecutionContext &execContext, std::vector<Value> positional, std::unordered_map<std::string, Value> named, const Span &span, int recursionDepth) :
+        m_execContext(execContext), m_positional(positional), m_named(named), m_span(span), m_recursionDepth(recursionDepth) { }
 
     ExecutionContext &execContext() const { return m_execContext; }
 
@@ -88,24 +88,27 @@ public:
     }
 
     CallContext empty() const {
-        return CallContext{m_execContext, {}, {}, m_span};
+        return CallContext{m_execContext, {}, {}, m_span, m_recursionDepth};
     }
 
     CallContext with(Value value) const {
-        return CallContext{m_execContext, {std::move(value)}, {}, m_span};
+        return CallContext{m_execContext, {std::move(value)}, {}, m_span, m_recursionDepth};
     }
 
     CallContext with(const std::string &name, Value value) const {
-        return CallContext{m_execContext, {}, {{name, std::move(value)}}, m_span};
+        return CallContext{m_execContext, {}, {{name, std::move(value)}}, m_span, m_recursionDepth};
     }
 
     const Span& span() const { return m_span; }
+
+    int recursionDepth() const { return m_recursionDepth; }
 
 private:
     ExecutionContext& m_execContext;
     const std::vector<Value> m_positional;
     const std::unordered_map<std::string, Value> m_named;
     const Span &m_span;
+    const int m_recursionDepth;
     size_t m_nextPositional = 0;
 };
 
