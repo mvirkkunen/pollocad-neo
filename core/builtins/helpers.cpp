@@ -63,7 +63,7 @@ gp_XYZ parseVec(const Argument &arg, gp_XYZ default_, int elements) {
 
     gp_XYZ result = default_;
     for (int i = 0; i < 3 && i < list.size(); i++) {
-        const auto &item = list.at(i);
+        const auto item = list.at(i);
         if (item.isUndefined()) {
             continue;
         } else if (item.is<double>()) {

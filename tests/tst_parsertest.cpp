@@ -90,6 +90,8 @@ private slots:
                    },
                }};
 
+        QTest::newRow("wat") << "for (x = [0: 8]) { }" << BlockExpr{};
+
         QTest::newRow("two") //
             << "1 + 2; 3 + 4;"
             << BlockExpr{

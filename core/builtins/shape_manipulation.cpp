@@ -229,13 +229,13 @@ Value builtin_for(CallContext &c) {
             }
         });
     } else if (argCount <= 3) {
-        const auto &afrom = c.allPositional().at(0);
-        if (!afrom.as<double>()) {
+        const auto afrom = c.allPositional().at(0);
+        if (!afrom.is<double>()) {
             return c.error("for loop start value must be a number");
         }
         double from = afrom.as<double>();
 
-        const auto &ato = c.allPositional().at(argCount - 1);
+        const auto ato = c.allPositional().at(argCount - 1);
         if (!ato.is<double>()) {
             return c.error("for loop to value must be a number");
         }
@@ -243,7 +243,7 @@ Value builtin_for(CallContext &c) {
 
         double step = 1.0;
         if (argCount == 3) {
-            const auto &astep = c.allPositional().at(1);
+            const auto astep = c.allPositional().at(1);
             if (!astep.is<double>()) {
                 return c.error("for loop step value must be a number");
             }
