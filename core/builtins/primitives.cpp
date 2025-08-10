@@ -130,7 +130,7 @@ Value builtin_logical_or(CallContext &c) {
 
 
 Value builtin_index(CallContext &c) {
-    auto indexee = c.arg("indexee");
+    auto indexee = c.arg("value to index");
     auto index = c.arg("index");
 
     return indexee.overload(

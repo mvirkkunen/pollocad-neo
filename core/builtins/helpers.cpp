@@ -58,7 +58,7 @@ gp_XYZ parseVec(const Argument &arg, gp_XYZ default_, int elements) {
     }
 
     if (list.size() > elements) {
-        arg.warning("excess elements, expected 3, got {}", list.size());
+        arg.warning("excess elements, expected {}, got {}", elements, list.size());
     }
 
     gp_XYZ result = default_;

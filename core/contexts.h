@@ -112,12 +112,18 @@ private:
 class ArgumentList;
 
 class Argument {
-public:
-    Argument(const CallContext &callContext, const char *name, const Value &value) : m_callContext(callContext), m_name(name), m_value(value) { }
+    Argument(const CallContext &callContext, const char *name, const Value &value, bool isSubValue) : m_callContext(callContext), m_name(name), m_value(value), m_isSubValue(isSubValue) { }
 
-    const char *name() const {
-        return m_name;
+public:
+    Argument(const CallContext &callContext, const char *name, const Value &value) : Argument(callContext, name, value, false) { }
+
+    const Argument subValue(const Value &value) const {
+        return Argument(m_callContext, m_name, value, true);
     }
+
+    /*const char *name() const {
+        return m_name;
+    }*/
 
     template <typename T>
     bool is() const {
@@ -127,9 +133,9 @@ public:
     template <typename T>
     ValueAs<T> as() const {
         if (m_value.isUndefined()) {
-            m_callContext.error("missing required argument {}", m_name);
+            m_callContext.error("missing required {}", descriptiveName());
         } else if (!m_value.is<T>()) {
-            m_callContext.error("invalid {}: type is {}, expected {}", m_name, m_value.typeName(), Value::typeName(Value::typeOf<T>()));
+            m_callContext.error("invalid {}: type is {}, expected {}", descriptiveName(), m_value.typeName(), Value::typeName(Value::typeOf<T>()));
         }
 
         return m_value.as<T>();
@@ -158,7 +164,7 @@ public:
         if (!overload_(ret, head, rest...)) {
             std::ostringstream ss;
             overloadTypeError(ss, head, rest...);
-            m_callContext.error("invalid {}: type is {}, expected one of: {}", m_name, m_value.typeName(), ss.str());
+            m_callContext.error("invalid {}: type is {}, expected one of: {}", descriptiveName(), m_value.typeName(), ss.str());
         }
 
         if constexpr (!std::is_same_v<ReturnType, void>) {
@@ -168,12 +174,12 @@ public:
 
     template <typename... Args>
     Value error(std::format_string<Args...> fmt, Args&&... args) const {
-        return m_callContext.error("invalid {}: {}", m_name, std::format(fmt, std::forward<Args>(args)...));
+        return m_callContext.error("invalid {}: {}", descriptiveName(), std::format(fmt, std::forward<Args>(args)...));
     }
 
     template <typename... Args>
     void warning(std::format_string<Args...> fmt, Args&&... args) const {
-        m_callContext.warning("invalid {}: {}", m_name, std::format(fmt, std::forward<Args>(args)...));
+        m_callContext.warning("invalid {}: {}", descriptiveName(), std::format(fmt, std::forward<Args>(args)...));
     }
 
     operator bool() const { return !m_value.isUndefined(); }
@@ -182,6 +188,11 @@ private:
     const CallContext &m_callContext;
     const char *m_name;
     const Value &m_value;
+    const bool m_isSubValue;
+
+    std::string descriptiveName() const {
+        return m_isSubValue ? std::format("item in {}", m_name) : std::format("argument {}", m_name);
+    }
 
     template <typename Ret, typename Head, typename... Rest>
     bool overload_(Ret &ret, Head&& head, Rest&&... rest) const {
@@ -220,6 +231,11 @@ private:
 
     template <typename Ret>
     bool overload_(Ret &ret) const {
+        if (m_value.isUndefined()) {
+            m_callContext.error("missing required {}", descriptiveName());
+            return true;
+        }
+
         return false;
     }
 
@@ -248,27 +264,30 @@ private:
 class ArgumentList {
 public:
     class iterator {
-    public:
         iterator(const ArgumentList& list, ValueList::const_iterator iter) : m_list(list), m_iter(iter) { }
 
-        const Argument operator*() const { return Argument(*m_list.m_callContext, m_list.m_name, *m_iter); }
+    public:
+        const Argument operator*() const { return m_arg->subValue(*m_iter); }
         bool operator==(const iterator& other) const { return m_iter == other.m_iter; }
         ValueList::const_iterator operator++() { return m_iter++; }
 
     private:
+        const Argument *m_arg;
         const ArgumentList &m_list;
         ValueList::const_iterator m_iter;
+
+        friend class ::ArgumentList;
     };
 
     ArgumentList() { }
-    ArgumentList(const CallContext *callContext, const char *name, const ValueList &list) : m_callContext(callContext), m_name(name), m_list(list) { }
+    ArgumentList(const Argument *arg, const ValueList &list) : m_arg(arg), m_list(list) { }
 
     size_t const size() const {
         return m_list.size();
     }
 
-    const Argument at(size_t index) const {
-        return Argument(*m_callContext, m_name, m_list.at(index));
+    Argument at(size_t index) const {
+        return m_arg->subValue(m_list.at(index));
     }
 
     iterator begin() const {
@@ -280,13 +299,12 @@ public:
     }
 
 private:
-    const CallContext *m_callContext = nullptr;
-    const char *m_name = nullptr;
+    const Argument *m_arg = nullptr;
     const ValueList &m_list = emptyValueList;
 };
 
 inline ArgumentList Argument::asList() const {
-    return ArgumentList(&m_callContext, m_name, as<ValueList>());
+    return ArgumentList(this, as<ValueList>());
 }
 
 class Environment {

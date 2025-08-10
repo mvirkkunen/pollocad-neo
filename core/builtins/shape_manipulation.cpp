@@ -17,14 +17,14 @@
 namespace
 {
 
-Value builtin_move(const CallContext &c) {
+Value builtin_move(CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
         return undefined;
     }
 
     gp_Trsf trsf;
-    trsf.SetTranslation(parseXYZ(c, 0.0));
+    trsf.SetTranslation(parseXYZ(c, c.arg("position"), 0.0));
 
     ShapeList result;
     for (const auto &c : children) {
@@ -34,13 +34,13 @@ Value builtin_move(const CallContext &c) {
     return result;
 }
 
-Value builtin_rot(const CallContext &c) {
+Value builtin_rot(CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
         return undefined;
     }
 
-    auto v = parseXYZ(c, 0.0);
+    auto v = parseXYZ(c, c.arg("rotation"), 0.0);
 
     gp_Trsf trsf;
     if (v.X() != 0.0) {
@@ -81,20 +81,20 @@ Value builtin_orient(const CallContext &c) {
     return result;
 }
 
-Value builtin_tag(const CallContext &c) {
+Value builtin_tag(CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
         return undefined;
     }
 
-    auto ptag = c.get<std::string>(0);
-    if (!ptag) {
+    auto tag = c.arg("tag").as<std::string>();
+    if (tag.empty()) {
         return children;
     }
 
     ShapeList result;
     for (const auto &c : children) {
-        result.push_back(c.withProp(*ptag, true));
+        result.push_back(c.withProp(tag, true));
     }
 
     return result;
@@ -114,25 +114,22 @@ Value builtin_remove(const CallContext &c) {
     return result;
 }
 
-Value builtin_prop(const CallContext &c) {
+Value builtin_prop(CallContext &c) {
     auto children = c.children();
     if (children.empty()) {
         return undefined;
     }
 
-    auto pname = c.get<std::string>(0);
-    if (!pname) {
-        return children;
-    }
+    auto name = c.arg("name").as<std::string>();
+    auto value = c.arg("value").asAny();
 
-    auto pvalue = c.get(1);
-    if (!pvalue) {
+    if (name.empty() || !value) {
         return children;
     }
 
     ShapeList result;
     for (const auto &c : children) {
-        result.push_back(c.withProp(*pname, *pvalue));
+        result.push_back(c.withProp(name, value));
     }
 
     return result;
@@ -190,68 +187,74 @@ Value builtin_combine(const CallContext &c) {
     return result;
 }
 
-Value builtin_for(const CallContext &c) {
-    const auto children = c.get<Function>("$children");
-    if (!children) {
+Value builtin_for(CallContext &c) {
+    const auto achildren = c.named("$children");
+    if (!achildren) {
         return undefined;
     }
 
+    auto children = achildren.as<Function>();
+
     ShapeList result;
     const auto iteration = [&](const Value &item) {
-        const auto value = (*children)(c.with(item));
+        auto cc = c.with(item);
+        auto value = children(cc);
 
-        if (value.undefined()) {
+        if (!value) {
             // ignore
-        } else if (auto shapes = value.as<ShapeList>()) {
-            std::move(shapes->begin(), shapes->end(), std::back_inserter(result));
+        } else if (value.is<ShapeList>()) {
+            auto shapes = value.as<ShapeList>();
+            std::move(shapes.cbegin(), shapes.cend(), std::back_inserter(result));
         } else {
             c.error("for children must be shapes");
+            result.clear();
             return false;
         }
 
         return true;
     };
 
-    if (c.positional().size() == 1) {
-        const auto plist = c.get<ValueList>(0);
-        if (!plist) {
-            return c.error("attempted to for loop over something that is not a list");
-        }
+    size_t argCount = c.allPositional().size();
 
-        for (const auto &item: *plist) {
-            if (c.canceled()) {
-                return undefined;
-            }
+    if (argCount == 1) {
+        c.arg("iterable").overload([&](ValueList list) {
+            for (const auto &item: list) {
+                if (c.canceled()) {
+                    return;
+                }
 
-            if (!iteration(item)) {
-                return undefined;
+                if (!iteration(item)) {
+                    return;
+                }
             }
-        }
-    } else if (c.positional().size() <= 3) {
-        const auto pfrom = c.get<double>(0);
-        if (!pfrom) {
+        });
+    } else if (argCount <= 3) {
+        const auto &afrom = c.allPositional().at(0);
+        if (!afrom.as<double>()) {
             return c.error("for loop start value must be a number");
         }
+        double from = afrom.as<double>();
 
-        const auto pto = c.get<double>(c.positional().size() - 1);
-        if (!pto) {
+        const auto &ato = c.allPositional().at(argCount - 1);
+        if (!ato.is<double>()) {
             return c.error("for loop to value must be a number");
         }
+        double to = ato.as<double>();
 
-        constexpr double defaultStep = 1.0;
-
-        const auto pstep = c.positional().size() == 3 ? c.get(1)->as<double>() : 1.0;
-        if (!pstep) {
-            return c.error("for loop step value must be a number");
+        double step = 1.0;
+        if (argCount == 3) {
+            const auto &astep = c.allPositional().at(1);
+            if (!astep.is<double>()) {
+                return c.error("for loop step value must be a number");
+            }
+            step = astep.as<double>();
         }
-
-        double from = *pfrom, step = *pstep, to = *pto;
 
         if (step == 0.0) {
             return c.error("for loop step value cannot be zero");
         }
 
-        if (*pto < *pfrom && step > 0) {
+        if (to < from && step > 0) {
             step = -step;
         }
 
@@ -269,49 +272,6 @@ Value builtin_for(const CallContext &c) {
     }
 
     return result;
-}
-
-Value builtin_pipe_shell(const CallContext &c) {
-    auto children = c.children();
-    if (children.empty()) {
-        return undefined;
-    }
-
-    TopoDS_Wire spline;
-    if (auto pdist = c.get<double>(0, false)) {
-        spline = BRepLib_MakeWire{
-            BRepLib_MakeEdge{gp_Pnt{0.0, 0.0, 0.0}, gp_Pnt{0.0, 0.0, *pdist}}
-        };
-    } else if (auto pshape = c.get<ShapeList>(0, false); !pshape->empty()) {
-        if (pshape->size() > 1) {
-            return c.error("invalid spline for pipe_shell (multiple shapes)");
-        }
-
-        auto shape = pshape->at(0).shape();
-        if (shape.ShapeType() != TopAbs_WIRE) {
-            return c.error("invalid spline for pipe_shell (shape is not a wire)");
-        }
-
-        spline = TopoDS::Wire(shape);
-    } else {
-        return c.error("invalid spline for pipe_shell (not number or shape)");
-    }
-
-    auto algo = BRepOffsetAPI_MakePipeShell{spline};
-
-    algo.SetDiscreteMode();
-
-    for (const auto &ch : children) {
-        auto shape = ch.shape();
-
-        c.info("Adding shape of type {}", (int)shape.ShapeType());
-
-        algo.Add(shape);
-    }
-
-    //algo.MakeSolid();
-
-    return ShapeList{algo.Shape()};
 }
 
 Value builtin_thru_sections(const CallContext &c) {
@@ -362,9 +322,9 @@ Value builtin_bounds(const CallContext &c) {
 
     result.Add(getBoundingBox(c.children()));
     
-    for (const auto &arg : c.positional()) {
-        if (const auto pshape = arg.as<ShapeList>()) {
-            result.Add(getBoundingBox(*pshape));
+    for (const auto &arg : c.allPositional()) {
+        if (arg.is<ShapeList>()) {
+            result.Add(getBoundingBox(arg.as<ShapeList>()));
         }
     }
 
@@ -393,7 +353,6 @@ void add_builtins_shape_manipulation(Environment &env) {
     env.setFunction("prop", builtin_prop);
     env.setFunction("combine", builtin_combine);
     env.setFunction("for", builtin_for);
-    env.setFunction("pipe_shell", builtin_pipe_shell);
     env.setFunction("thru_sections", builtin_thru_sections);
     env.setFunction("bounds", builtin_bounds);
 }

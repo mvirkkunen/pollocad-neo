@@ -13,7 +13,7 @@ add_library(PollocadCore
     builtins/make_2d.cpp
     builtins/make_3d.cpp
     builtins/primitives.cpp
-    # builtins/shape_manipulation.cpp
+    builtins/shape_manipulation.cpp
 )
 
 target_include_directories(PollocadCore

@@ -29,7 +29,7 @@ Executor::Executor() {
     REGISTER_BUILTINS(make_2d);
     REGISTER_BUILTINS(make_3d);
     REGISTER_BUILTINS(primitives);
-    //REGISTER_BUILTINS(shape_manipulation);
+    REGISTER_BUILTINS(shape_manipulation);
 }
 
 ExecutorResult Executor::execute(const std::string &code) {
