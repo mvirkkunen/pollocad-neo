@@ -1,6 +1,6 @@
 #include <unordered_set>
 
-#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QQuickWindow>
 #include <QQmlApplicationEngine>
@@ -23,18 +23,14 @@ int main(int argc, char *argv[])
     BackgroundExecutor executorManager;
     engine.rootContext()->setContextProperty("executor", &executorManager);
 
-    QString loadedCode = "pollo();\n";
-    const auto &args = QGuiApplication::arguments();
+    QUrl fileToLoad;
+
+    const auto args = QGuiApplication::arguments();
     if (args.length() >= 2) {
-        const auto &path = args.at(1);
-        QFile file(args.at(1));
-        if (file.open(QFile::ReadOnly)) {
-            loadedCode = QString::fromUtf8(file.readAll());
-        } else {
-            std::cerr << "Could not open " << path.toStdString() << "\n";
-        }
+        fileToLoad = QUrl::fromLocalFile(args.at(1));
     }
-    engine.rootContext()->setContextProperty("loadedCode", loadedCode);
+
+    engine.rootContext()->setContextProperty("fileToLoad", fileToLoad);
 
     QObject::connect(
         &engine,

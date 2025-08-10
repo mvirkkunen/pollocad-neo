@@ -24,6 +24,7 @@
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <StdSelect_BRepOwner.hxx>
+#include <STEPControl_Writer.hxx>
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
@@ -88,6 +89,29 @@ OcctView::OcctView()
 
 void OcctView::setResult(BackgroundExecutorResult *result) {
     scheduleRenderJob([this, result] { if (m_renderer) { m_renderer->setResult(result); } });
+
+    BRep_Builder builder;
+    builder.MakeCompound(m_resultCompound);
+
+    if (result->shapes()) {
+        for (const auto& sh : *result->shapes()) {
+            builder.Add(m_resultCompound, sh.shape());
+        }
+    }
+}
+
+void OcctView::exportResult(QUrl url) {
+    if (m_resultCompound.IsNull()) {
+        std::cerr << "null shape\n";
+        return;
+    }
+
+    STEPControl_Writer aWriter;
+    IFSelect_ReturnStatus stat = aWriter.Transfer(m_resultCompound, STEPControl_AsIs);
+    std::cerr << "Transfer status: " << stat << "\n";
+
+    stat = aWriter.Write(url.toLocalFile().toLocal8Bit().data());
+    std::cerr << "WRite status: " << stat << "\n";
 }
 
 void OcctView::setHoveredPosition(int position) {

@@ -3,6 +3,8 @@
 
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QUrl>
+#include <TopoDS_Compound.hxx>
 
 #include "spanobj.h"
 
@@ -22,6 +24,7 @@ public:
     OcctView();
 
     Q_INVOKABLE void setResult(BackgroundExecutorResult *result);
+    Q_INVOKABLE void exportResult(QUrl url);
 
     int hoveredPosition() const { return m_hoveredPosition; }
     void setHoveredPosition(int position);
@@ -57,6 +60,7 @@ private:
     int m_hoveredPosition = -1;
     QList<SpanObj> m_hoveredSpans;
     bool m_showHighlightedShapes = true;
+    TopoDS_Compound m_resultCompound;
 };
 
 #endif // OCCTVIEW_H

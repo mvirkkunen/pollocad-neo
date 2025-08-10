@@ -29,6 +29,7 @@ target_link_libraries(PollocadCore
     PUBLIC
         TKBO
         TKBRep
+        TKDESTEP
         TKernel
         TKFillet
         TKMath

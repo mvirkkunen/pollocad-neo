@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Fusion
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import pollocadgui
 
@@ -10,16 +11,22 @@ ApplicationWindow {
     width: 1800
     height: 900
     visible: true
-    title: qsTr("pollocad NEO")
+    title: (code.textDocument.modified ? "* " : "") + qsTr("pollocad NEO")
 
     menuBar: MenuBar {
         Menu {
             title: "&File"
+            Action { text: "&Open..."; onTriggered: window.openFile(); }
+            MenuSeparator {}
+            Action { text: "&Save"; onTriggered: window.saveFile(); }
+            Action { text: "S&ave As"; onTriggered: saveAsDialog.open(); }
+            Action { text: "&Export..."; onTriggered: exportDialog.open() }
+            MenuSeparator {}
             Action { text: "E&xit"; onTriggered: window.close() }
         }
-        Menu {
+        /*Menu {
             title: "&View"
-        }
+        }*/
     }
 
     SplitView {
@@ -42,7 +49,6 @@ ApplicationWindow {
             id: code
             SplitView.preferredWidth: 600
 
-            text: loadedCode
             highlightedSpans: occtView.hoveredSpans
 
             onCodeChanged: {
@@ -171,8 +177,55 @@ ApplicationWindow {
         }
     }
 
+    MessageDialog {
+        id: confirmOpenDialog
+        text: "The file has been modified"
+        informativeText: "Discard changes?"
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: {
+            code.textDocument.modified = false;
+            window.openFile();
+        }
+    }
+
+    FileDialog {
+        id: openDialog
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["PolloCad files (*.pc)", "Text files (*.txt)", "All files (*)"]
+        onAccepted: code.textDocument.source = selectedFile;
+    }
+
+    FileDialog {
+        id: saveAsDialog
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PolloCad files (*.pc)"]
+        defaultSuffix: ".pc"
+        onAccepted: code.textDocument.saveAs(selectedFile);
+    }
+
+    FileDialog {
+        id: exportDialog
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["STEP file (*.step)"]
+        defaultSuffix: ".step"
+        onAccepted: occtView.exportResult(selectedFile);
+    }
+
     Component.onCompleted: {
-        executor.execute(code.text);
+        if (String(fileToLoad)) {
+            code.textDocument.source = fileToLoad;
+        } else {
+            code.text = "pollo();\n";
+            executor.execute(code.text);
+        }
+    }
+
+    Connections {
+        target: code.textDocument
+
+        function onStatusChanged() {
+
+        }
     }
 
     Connections {
@@ -183,6 +236,27 @@ ApplicationWindow {
             code.setResult(res);
             messages.model = res.messagesModel();
             shapeOutOfDate = !res.hasShapes;
+        }
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Save]
+        onActivated: window.saveFile();
+    }
+
+    function openFile() {
+        if (code.textDocument.modified) {
+            confirmOpenDialog.open();
+        } else {
+            openDialog.open();
+        }
+    }
+
+    function saveFile() {
+        if (code.textDocument.source) {
+            code.textDocument.save();
+        } else {
+            saveAsDialog.open();
         }
     }
 }
