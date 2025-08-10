@@ -351,7 +351,7 @@ struct expr_atom {
 
     struct bracketed_index_op_ : lexy::transparent_production {
         static constexpr auto name = "indexing expression";
-        static constexpr auto rule = dsl::square_bracketed(dsl::position + dsl::p<expr> + dsl::position);
+        static constexpr auto rule = dsl::position(dsl::square_bracketed(dsl::p<expr>) + dsl::position);
         static constexpr auto value = lexy::callback_with_state<PropertyAccess>(
             [](ParseState &st, Pos begin, Expr index, Pos end) { return PropertyAccess{std::move(index), st.span(begin, end)}; }
         );
@@ -359,7 +359,7 @@ struct expr_atom {
 
     struct property_access_op_ : lexy::transparent_production {
         static constexpr auto name = "property access expression";
-        static constexpr auto rule = dsl::lit_c<'.'> >> (dsl::position + dsl::p<ident> + dsl::position);
+        static constexpr auto rule = dsl::position(dsl::lit_c<'.'> >> dsl::p<ident> + dsl::position);
         static constexpr auto value = lexy::callback_with_state<PropertyAccess>(
             [](ParseState &st, Pos begin, std::string index, Pos end) { return PropertyAccess{index, st.span(begin, end)}; }
         );
