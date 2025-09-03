@@ -13,6 +13,8 @@
 #include <BRepTools.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Builder.hxx>
+#include <TopoDS_Compound.hxx>
 
 namespace
 {
@@ -173,12 +175,23 @@ Value builtin_combine(const CallContext &c) {
         shape = fuse.Shape();
     }
 
+    TopoDS_Shape cutShape;
     for (; it != children.end(); it++) {
         if (c.canceled()) {
             return undefined;
         }
 
-        BRepAlgoAPI_Cut cut{shape, it->shape()};
+        if (cutShape.IsNull()) {
+            cutShape = it->shape();
+        } else {
+            BRepAlgoAPI_Fuse fuse{cutShape, it->shape()};
+            fuse.SimplifyResult();
+            cutShape = fuse.Shape();
+        }
+    }
+
+    if (!cutShape.IsNull()) {
+        BRepAlgoAPI_Cut cut{shape, cutShape};
         cut.SimplifyResult();
         shape = cut.Shape();
     }
